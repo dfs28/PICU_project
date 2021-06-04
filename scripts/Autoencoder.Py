@@ -9,34 +9,26 @@ import numpy as np
 # This is the size of our encoded representations
 encoding_dim = 32  # 32 floats -> compression of factor 24.5, assuming the input is 784 floats
 
-# This is our input image
-input_img = keras.Input(shape=(784,))
+input_img = keras.Input(shape=(28, 28, 1))
 
-# "encoded" is the encoded representation of the input
-encoded = layers.Dense(encoding_dim, activation='relu')(input_img)
-encoded = layers.Dense(128, activation='relu')(input_img)
-encoded = layers.Dense(64, activation='relu')(encoded)
-encoded = layers.Dense(32, activation='relu')(encoded)
+x = layers.Conv2D(16, (3, 3), activation='relu', padding='same')(input_img)
+x = layers.MaxPooling2D((2, 2), padding='same')(x)
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+x = layers.MaxPooling2D((2, 2), padding='same')(x)
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+encoded = layers.MaxPooling2D((2, 2), padding='same')(x)
 
-# "decoded" is the lossy reconstruction of the input
-decoded = layers.Dense(64, activation='relu')(encoded)
-decoded = layers.Dense(128, activation='relu')(decoded)
-decoded = layers.Dense(784, activation='sigmoid')(decoded)
+# at this point the representation is (4, 4, 8) i.e. 128-dimensional
 
-# This model maps an input to its reconstruction
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(encoded)
+x = layers.UpSampling2D((2, 2))(x)
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+x = layers.UpSampling2D((2, 2))(x)
+x = layers.Conv2D(16, (3, 3), activation='relu')(x)
+x = layers.UpSampling2D((2, 2))(x)
+decoded = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')(x)
+
 autoencoder = keras.Model(input_img, decoded)
-
-# This model maps an input to its encoded representation
-encoder = keras.Model(input_img, encoded)
-
-# This is our encoded (32-dimensional) input
-encoded_input = keras.Input(shape=(encoding_dim,))
-# Retrieve the last layer of the autoencoder model
-decoder_layer = autoencoder.layers[-1]
-# Create the decoder model
-decoder = keras.Model(encoded_input, decoder_layer(encoded_input))
-
-
 autoencoder.compile(optimizer='adam', loss='binary_crossentropy')
 
 (x_train, _), (x_test, _) = mnist.load_data()
