@@ -3,7 +3,7 @@
 
 import pandas as pd
 import numpy as np
-
+import matplotlib.pyplot as plt
 
 #Import the files - start with the massive flowsheet one
 flowsheet = pd.read_csv('Project/Project_data/files/caboodle_patient_selected_flowsheetrows_main_pivot.csv', sep= ',', parse_dates=['taken_datetime'])
@@ -44,7 +44,73 @@ def print_allunique(sheet, column):
     for i in range(length):
         next(a)
 
-#Function to split up by patient
+#Split up by patient
+def split_by_pt(sheet, col):
+    """
+    Function to split up a sheet by patient \n
+    Takes a pd.DataFrame, specify column as text
+    """
+    patient_dfs = list()
+    unique_patients = sheet[col].unique()
+    
+    #Work through the the patients and split into new sheets
+    for i, j in enumerate(unique_patients):
+        temp_df = sheet.loc[sheet[col] == j, :]
+        patient_dfs.append(temp_df) 
+
+    return patient_dfs
+    
+flowsheet_pt_split = split_by_pt(flowsheet, 'project_id')
+
+#Do some plotting
+def plot_PICU_params(df, patient, labels = labels, title="", xlabel='Date', ylabel='Value', dpi=500):
+    ''' 
+    Function to do some plotting of timeseries data, plots multiple parameters for same patient
+    Takes parameters df (pandas dataframe), x and y values, plots them
+    You have to choose a label to print
+    Uses the input from the index
+    Note this function doesn't work atm - not sure why
+    '''
+
+    #Choose columns which have fewest NaNs
+    pt_df = df[patient]
+    colnames = pt_df.columns
+    numNaNs = np.zeros([len(colnames) - 3])
+
+    #Work  through columns and get numbers of Nans
+    for i in range(3, len(colnames)):
+        isnan = pt_df.iloc[:, (i)].isna()
+        numNaNs[i - 3] = pt_df.loc[isnan, :].shape[0]
+
+    #Sort the NaNs
+    sortedNaNs = np.argsort(numNaNs)
+    top16locs = pd.Series(sortedNaNs).isin(range(15))
+    top16 = sortedNaNs[top16locs] + 3
+
+    #Instantiate figure 
+    fig, axs = plt.subplots(4, 4, figsize=(15,15), sharex=True)
+    
+    #ISSUE HERE HANDLING BLOOD PRESSURES - FIRST THING TO FIX!
+
+    #Work through the different patients
+    for i in range(4):
+        for j in range(4):
+
+            #Choose the correct column
+            column = colnames[top16[4*i + j]]
+            
+            #First object in list for each pt is list of vars
+            x = pt_df['taken_datetime']
+            y = float(pt_df[column])
+            axs[i, j].plot(x, y)
+            axs[i, j].set_title(column)
+
+    for ax in axs.flat:
+        ax.set(xlabel='time', ylabel='value')
+
+    
+    #Save it
+    fig.savefig('Project/PICU_project/figs/PICU_plots' + str(patient) + '.png')
 
 
 #Start by merging columns appropriately
