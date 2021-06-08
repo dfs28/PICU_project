@@ -4,6 +4,8 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from progress.bar import Bar
+import os
 
 #Import the files - start with the massive flowsheet one
 flowsheet = pd.read_csv('Project/Project_data/files/caboodle_patient_selected_flowsheetrows_main_pivot.csv', sep= ',', parse_dates=['taken_datetime'])
@@ -39,10 +41,30 @@ def print_uniquevars(sheet, column):
         yield print(i)
 
 def print_allunique(sheet, column):
+    """
+    Simple function that prints proportion of NaNs, absolute number of Nans and unique values
+    Could also add in functionality to say what proportion of each exist
+    """
+
+    #Get number of Nas
+    isnan = sheet.iloc[:, (column)].isna()
+    numNaNs = sheet.loc[isnan, :].shape[0]
+    notNa = sheet.shape[0] - numNaNs
+    propnotNa = notNa/sheet.shape[0]
+    print('For {}'.format(sheet.columns[column]))
+    print('{:2.2%} percent not Na'.format(propnotNa))
+    print('{} of {} not Na'.format(notNa, sheet.shape[0]))
+
+    #Print out the unique vals
     a = print_uniquevars(sheet, column)
     length = len(sheet.loc[:, sheet.columns[column]].unique())
     for i in range(length):
         next(a)
+
+
+
+
+
 
 #Split up by patient
 def split_by_pt(sheet, col):
@@ -60,7 +82,47 @@ def split_by_pt(sheet, col):
 
     return patient_dfs
     
-flowsheet_pt_split = split_by_pt(flowsheet, 'project_id')
+#flowsheet_pt_split = split_by_pt(flowsheet, 'project_id')
+
+
+
+
+#Think about which variables are seen the most and the least
+#Should help with what is worth going through
+
+#This takes ages so I've saved it, only rerun if needed
+if (os.path.exists('Project/Project_data/files/not_NA.csv') == False):
+    colnames = flowsheet.columns
+    numNaNs = np.zeros([len(colnames) - 3])
+
+    #Make a progress bar because this takes ages
+    bar = Bar('Processing', max=len(colnames))
+
+    #Work  through columns and get numbers of Nans
+    for i in range(3, len(colnames)):
+        isnan = flowsheet.iloc[:, (i)].isna()
+        numNaNs[i - 3] = flowsheet.loc[isnan, :].shape[0]
+        bar.next()
+
+    bar.finish()
+    
+    #Sort the NaNs
+    numNotNa = flowsheet.shape[0] - numNaNs
+    np.savetxt('Project/Project_data/files/not_NA.csv', numNotNa, delimiter=',')
+else: 
+    numNotNa = np.genfromtxt('Project/Project_data/files/not_NA.csv', delimiter=',')
+
+topcols = colnames[np.append(np.array([False, False, False]), numNotNa > 10000)]
+for i in range(len(topcols)):
+    print(topcols[i])
+sortedNaNs = np.argsort(numNotNa)
+
+
+top16locs = pd.Series(sortedNaNs).isin(range(15))
+top16 = sortedNaNs[top16locs] + 3
+
+
+
 
 #Do some plotting
 def plot_PICU_params(df, patient, labels = labels, title="", xlabel='Date', ylabel='Value', dpi=500):
@@ -147,10 +209,14 @@ def make_new_columns(original_column, sheet, new_cols, inputIsoutput = False, **
         for key, value in input2output.items():
             new_column = new_cols[i]
             if not new_column in sheet.columns:
+
+                #Should probably consider whether default should be zeros?
                 sheet[new_column] = 0
             
-            #Work  through the items in this dict
+            #Work  through the items in this list
             for j, k in enumerate(value):
+
+                #Only take values that are in this column
                 if isinstance(k, list):
                     for l, m in enumerate(k):
                         original_values = value[j]
@@ -342,7 +408,139 @@ make_new_columns(15, flowsheet, ['Ventilation'], newcol1 = ventilated15)
 (424, 'R AN AGENTS O2_L/min')
 """
 
+#Need to finish this
 
+#### Work on BP now
+#Can consider some sort of helper function to return appropriate vars?
+
+def conv_BP(original_column, sheet, SysDia = 'Three'):
+    """
+    Function to take some columns and then make new ones  \n
+    Original column can be a number or a string \n
+    Sheet is a pd.DataFrame \n
+    New cols (need to be named strings) are the new columns to be made \n
+    SysDia needs to be true or false
+    If inputIsoutput = True then it just takes the input and puts it in the new column \n
+    Input2output passed as nested lists for linking  \n
+    Will probably want to add some sort of missingness new column \n
+    """
+
+    #Get the unique values flexibly
+    if type(original_column) == int:
+        unique_inputs = sheet.loc[:, sheet.columns[original_column]].unique()
+        
+        #Make sure original column is a string
+        original_column = sheet.columns[original_column]
+
+    elif type(original_column) == str:
+        unique_inputs = sheet.loc[:, (original_column)].unique()
+    else:
+        raise ValueError('original_column should either be a numbered column or the correct name of a column')
+
+    #If both need to split into sys and dia
+    if SysDia == ('Three' | 'Both'):
+        new_sheet = sheet.loc[:, (original_column)].str.split("/", n = 1, expand = True)
+        new_sheet = new_sheet.astype('float')
+        new_sheet['MAP'] = new_sheet.loc[:, 0]*(1/3) + new_sheet.loc[:, 0]*(2/3)
+    else:
+        new_sheet = sheet.loc[:, (original_column)]
+
+    #Allocate the new values
+    i = 0
+        
+    #Work through the new columns
+    for value in new_cols:
+        new_column = value
+        
+        #Make a new column if its not alread there
+        if not new_column in sheet.columns:
+            sheet[new_column] = np.nan
+
+        #Use only the ones from the original columns that aren't Na
+        if SysDia == True:
+            na_locs = (new_sheet.loc[:, (i)].isna() == False)
+            new_values = new_sheet.loc[na_locs, (i)]
+        else:
+            na_locs = (new_sheet.isna() == False)
+            new_values = new_sheet[na_locs]
+
+        #Now assign
+        sheet.loc[na_locs, (new_column)] = new_values
+
+        i += 1
+
+
+#Make a unified BP column
+#4, 'R AN ARTERIAL BLOOD PRESSURE'
+print_allunique(flowsheet, 4)
+conv_BP(4, flowsheet, ['SysBP', 'DiaBP', 'MAP'])
+
+#5, 'R AN MEAN ARTERIAL BLOOD PRESSURE_mmHg'
+print_allunique(flowsheet, 5)
+conv_BP(5, flowsheet, SysDia = False, ['MAP'])
+
+#26, 'R AN CENTRAL AORTIC PRESSURE (CAP)'
+print_allunique(flowsheet, 26)
+conv_BP(26, flowsheet, 'SysBP', 'DiaBP', 'MAP')
+
+#27, 'R AN CENTRAL AORTIC PRESSURE (CAP) MEAN_mmHg'
+print_allunique(flowsheet, 27)
+conv_BP(27, flowsheet, 'MAP', SysDia = False)
+
+#(36, 'R ARTERIAL LINE WAVEFORM') - not used
+print_allunique(flowsheet, 36)
+
+#37, 'R GOSH IP MEAN ARTERIAL BLOOD PRESSURE_mmHg')
+print_allunique(flowsheet, 37)
+conv_BP(37, flowsheet, 'MAP', SysDia = False)
+
+#39, 'R ARTERIAL LINE BLOOD PRESSURE')
+print_allunique(flowsheet, 39)
+conv_BP(39, flowsheet, 'SysBP', 'DiaBP', 'MAP')
+
+#(40, 'R MAP A-LINE_mmHg')
+print_allunique(flowsheet, 40)
+conv_BP(4, flowsheet, 'MAP', SysDia = False)
+
+
+"""
+(39, 'R ARTERIAL LINE BLOOD PRESSURE')
+(40, 'R MAP A-LINE_mmHg')
+(68, 'R GOSH IP NEONATAL PAIN BLOOD PRESSURE')
+(69, 'R GOSH PEWS BP SCORE')
+(79, 'R PED BOYS DIASTOLIC BP PERCENTILE_%')
+(80, 'R PED BOYS SYSTOLIC BP PERCENTILE_%')
+(81, 'BLOOD PRESSURE')
+(161, 'R PED DIASTOLIC BP PERCENTILE_%')
+(162, 'R GOSH CV HAEMO DIASTOLE 1 NEW_mmHg')
+(163, 'R GOSH CV HAEMO DIASTOLE 1_mmHg')
+(164, 'R GOSH CV HAEMO DIASTOLE 2_mmHg')
+(192, 'R GOSH CV HAEMO EDP 1 NEW_mmHg')
+(193, 'R GOSH CV HAEMO EDP 1_mmHg')
+(255, 'R PED GIRLS DIASTOLIC BP PERCENTILE_%')
+(256, 'R PED GIRLS SYSTOLIC BP PERCENTILE_%')
+(361, 'R BP LOCATION')
+(385, 'R GOSH CV HAEMO MEAN 1_mmHg')
+(386, 'R GOSH CV HAEMO MEAN 2_mmHg')
+(411, 'R AN NIBP MEAN_mmHg')
+(623, 'R GOSH CV HAEMO SYSTOLE 1 NEW_mmHg')
+(624, 'R GOSH CV HAEMO SYSTOLE 1_mmHg')
+(625, 'R GOSH CV HAEMO SYSTOLE 2_mmHg')
+(621, 'R PED SYSTOLIC BP PERCENTILE_%')
+(626, 'R IP DOPPLER BLOOD PRESSURE')
+(627, 'R PIM SYSTOLIC BLOOD PRESSURE_mmHg')
+(638, 'R GOSH ICU TARGET DIASTOLIC MAX_mmHg')
+(639, 'R GOSH ICU TARGET DIASTOLIC MIN_mmHg')
+"""
+
+
+"""
+(141, 'R AN CVP MEAN_mmHg')
+(142, 'R DEVICE CVP MEAN_mmHg')
+(636, 'R GOSH ICU TARGET CVP MAX_mmHg')
+(637, 'R GOSH ICU TARGET CVP MIN_mmHg')
+"""
+print_allunique(flowsheet, 7)
 
 vent14_unique = flowsheet.loc[:, flowsheet.columns[14]].unique()
 ventilated = vent14_unique[[2, 12]]
