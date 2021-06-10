@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from progress.bar import Bar
 import os
 from itertools import chain
+import re
 
 #Import the files - start with the massive flowsheet one
 flowsheet = pd.read_csv('Project/Project_data/files/caboodle_patient_selected_flowsheetrows_main_pivot.csv', sep= ',', parse_dates=['taken_datetime'])
@@ -64,7 +65,7 @@ def print_uniquevars(sheet, column):
     for i in enumerate(unique_inputs):
         yield print(i)
 
-def print_allunique(sheet, column):
+def print_allunique(sheet, column, printAll = True):
     """
     Simple function that prints proportion of NaNs, absolute number of Nans and unique values
     Could also add in functionality to say what proportion of each exist
@@ -74,19 +75,19 @@ def print_allunique(sheet, column):
     column = return_colname(column, sheet)
 
     #Get number of Nas
-    isnan = sheet.loc[:, column].isna()
-    numNaNs = sheet.loc[isnan, :].shape[0]
-    notNa = sheet.shape[0] - numNaNs
+    isnan = sheet.loc[:, column].isna() == False
+    notNa = sum(isnan)
     propnotNa = notNa/sheet.shape[0]
     print('For {}'.format(column))
     print('{:2.2%} percent not Na'.format(propnotNa))
     print('{} of {} not Na'.format(notNa, sheet.shape[0]))
 
     #Print out the unique vals
-    a = print_uniquevars(sheet, column)
-    length = len(sheet.loc[:, column].unique())
-    for i in range(length):
-        next(a)
+    if printAll:
+        a = print_uniquevars(sheet, column)
+        length = len(sheet.loc[:, column].unique())
+        for i in range(length):
+            next(a)
 
 
 
@@ -98,21 +99,19 @@ def print_allunique(sheet, column):
 #This takes ages so I've saved it, only rerun if needed
 if (os.path.exists('Project/Project_data/files/not_NA.csv') == False):
     colnames = flowsheet.columns
-    numNaNs = np.zeros([len(colnames) - 3])
+    numNotNa = np.zeros([len(colnames) - 3])
 
     #Make a progress bar because this takes ages
     bar = Bar('Processing', max=len(colnames))
 
     #Work  through columns and get numbers of Nans
     for i in range(3, len(colnames)):
-        isnan = flowsheet.iloc[:, (i)].isna()
-        numNaNs[i - 3] = flowsheet.loc[isnan, :].shape[0]
+        isnan = flowsheet.iloc[:, (i)].isna() == False
+        numNotNa[i - 3] = sum(isnan)
         bar.next()
 
     bar.finish()
     
-    #Sort the NaNs
-    numNotNa = flowsheet.shape[0] - numNaNs
     np.savetxt('Project/Project_data/files/not_NA.csv', numNotNa, delimiter=',')
 else: 
     numNotNa = np.genfromtxt('Project/Project_data/files/not_NA.csv', delimiter=',')
@@ -236,13 +235,44 @@ def cor_FiO2(original_column, sheet, new_col):
     #Now assign
     sheet.loc[na_locs, new_col] = new_values
 
+
 #Helper function to search through the outcomes to help me
-def get_relevant_cols(sheet):
+def get_relevant_cols(sheet, query):
     """
     Function to pull out relevant colnames
     Will have it spit out how many Nas in the matching ones, 
     Also a short list of the unique values
     """
+
+    #Pull the colnames and then work through them with a query
+    colnames = sheet.columns
+    relevant_columns = list()
+    
+    #Make the query
+    prog = re.compile(query, flags = re.IGNORECASE)
+    for i, j in enumerate(colnames):
+
+        #Search for the query in colnames, if present store it
+        result = re.search(prog, j)
+        try:
+            start = result.start()
+            relevant_columns.append(i)
+        except:
+            pass
+    
+    for i in relevant_columns:
+        print(i)
+        print_allunique(sheet, i, False)
+        unique_vars = sheet.iloc[:, i].unique()
+        length = len(unique_vars)
+        if length > 10:
+            length = 10
+        print(unique_vars[0:length])
+        print('\n')
+        
+
+
+
 
 
 #### Start with ventilation and O2
@@ -254,9 +284,14 @@ Here I'm making a ventilation column:
 1 for on oxygen
 2 for NIV/Optiflow
 3 for intubated and ventilated
-5 for HFO
 
-An intubated column
+High frequency oscillated ventilation - this is because I want to assume that anyone with a tube is ventilated
+and possibly anyone with an EtCO2 value is also ventilated - its not clear from the variables which come from which
+so I will be able to assume that more patients are ventilated without accidentally marking them as not on high frequency
+oscillatory ventilation
+True/False (1/0)
+
+An intubated column - probably don't need this as above
 0 for not
 1 for intubated
 
@@ -267,6 +302,10 @@ An Oxygen flow column - this will then need to be corrected for bodyweight
 
 An FiO2 column (not going to try to convert between but planning to have missingness columns)
 
+A tracheostomy column (yes/no)
+
+Could probably consider adding some further columns including:
+PEEP/EPAP, IPAP, some other ventilation settings if they are available
 """
 #'R GOSH ICU AIRWAY STATUS' 14 ##### Is HFO high frequency oscillation or high flow oxygen?
 #Should I consider this as a separate var?
@@ -612,6 +651,15 @@ def conv_BP(original_column, sheet, SysDia, *new_cols):
 
         i += 1
 
+"""
+This column is just going to be BP as pulled from all other columns containing what appears to be BP
+I also wanted to include CVP but I'm unclear about these values - they appear to be in the 100s which would be 
+an unreasonable value
+
+For some reason there appears to be a problem with the MAP column - I if this is difficult to solve I will just 
+calculate this from the SBP and DBP columns - should possibly change the function so it doesn't automatically produce
+a MAP/ have the function calls not to produce MAP
+"""
 
 #Make a unified BP column
 #4, 'R AN ARTERIAL BLOOD PRESSURE'
@@ -723,30 +771,113 @@ print_allunique(flowsheet, 142)
 
 
 #### Now do HR
-"""
-(271, 'R GOSH CAR HR')
-(272, 'R GOSH IP NEONATAL PAIN HEART RATE')
-(273, 'R GOSH IP HEART RATE ECG_beats per minute')
-(274, 'R OPTIME HEART RATE STABLE')
-(275, 'R OPTIME NEW HEART RATE STABLE')
-(276, 'R GOSH PEWS HR SCORE')
-(277, 'R HEART RATE SOURCE')
-(302, 'R AN HEART RATE ECG_beats per minute')
-(303, 'R AN SPO2 HR PULSE')
-"""
+get_relevant_cols(flowsheet, 'HR| rate')
 
+#R GOSH IP HEART RATE ECG_beats per minute
+make_new_columns(273, flowsheet, ['HR'], True)
+#R AN HEART RATE ECG_beats per minute
+make_new_columns(302, flowsheet, ['HR'], True)
+#R AN SPO2 HR PULSE
+make_new_columns(303, flowsheet, ['HR'], True)
+#R GOSH IP HEART RATE PLETHYSMOGRAM
+make_new_columns(533, flowsheet, ['HR'], True)
 
 #GCS/ AVPU
+print_all(flowsheet)
+get_relevant_cols(flowsheet, 'GCS|AVPU|Comfort|Consciousness|Alert|Pupils|GLASGOW COMA SCALE|PEWS')
+
+#Comfort score
+#R GOSH COMFORT ALERTNESS
+make_new_columns(22, flowsheet, ['Comfort:Alertness'], True)
+#R GOSH COMFORT BP
+make_new_columns(83, flowsheet, ['Comfort:BP'], True)
+#R GOSH COMFORT CALMNESS
+make_new_columns(97, flowsheet, ['Comfort:Calmness'], True)
+#R GOSH COMFORT SCORE
+make_new_columns(110, flowsheet, ['Comfort'], True)
+#R GOSH IP COMFORT SCORE FOR GOSH GO
+make_new_columns(111, flowsheet, ['Comfort'], True)
+#R GOSH COMFORT HR
+make_new_columns(304, flowsheet, ['Comfort:HR'], True)
+#R GOSH COMFORT RESP NO VENT - Consider this as surrogate for no vent/ vent below?
+make_new_columns(563, flowsheet, ['Comfort:Resp'], True)
+#R GOSH COMFORT RESP VENT
+make_new_columns(564, flowsheet, ['Comfort:Resp'], True)
+#Alertness
+make_new_columns(867, flowsheet, ['Comfort:Alertness'], True)
+
+#R GOSH IP AVPU SCORE
+make_new_columns(48, flowsheet, ['AVPU'], newcols1 = [['U'], ['P'], ['V'], ['A']])
+#R PEDSCPN GLASGOW COMA SCALE (AGE 6 MONTHS TO 2 YEARS) BEST AUD
+make_new_columns(55, flowsheet, ['GCS_V'], True)
+#R PEDSCPN GLASGOW COMA SCALE (AGE GREATER THAN 2 YEARS) BEST AU
+make_new_columns(56, flowsheet, ['GCS_V'], True)
+#R NSR GLASGOW COMA SCALE BEST EYE RESPONSE
+make_new_columns(57, flowsheet, ['GCS_E'], True)
+
+#R PEDSCPN GLASGOW COMA SCALE (AGE 6 MONTHS TO 2 YEARS) BEST MOT
+motor60 = [[], ['1', 1], ['2', 2], [3.0, '3'], [4.0, '4', 'P'], ['5', 5.0], [6.0, '6']]
+make_new_columns(60, flowsheet, ['GCS_M'], newcols1 = motor60)
+#R PEDSCPN GLASGOW COMA SCALE (AGE GREATER THAN 2 YEARS) BEST MO
+make_new_columns(61, flowsheet, ['GCS_M'], newcols1 = motor60)
+#R GLASGOW COMA SCALE BEST MOTOR RESPONSE
+make_new_columns(58, flowsheet, ['GCS_M'], newcols1 = motor60)
+#R NSR GLASGOW COMA SCALE BEST MOTOR RESPONSE
+make_new_columns(59, flowsheet, ['GCS_M'], newcols1 = motor60)
+
+#R GLASGOW COMA SCALE BEST VERBAL RESPONSE
+make_new_columns(63, flowsheet, ['GCS_V'], newcols1 = motor60)
+
+#R GLASGOW COMA SCALE EYE OPENING
+eye223 = [[], ['1', 1], ['2', 2, 'P'], [3.0, '3'], [4.0, '4']]
+make_new_columns(223, flowsheet, ['GCS_E'], newcols1 = eye223)
+
+#R PEDSCPN GLASGOW COMA SCALE (AGE 6 MONTHS TO 2 YEARS) EYE OPEN
+make_new_columns(224, flowsheet, ['GCS_E'], newcols1 = eye223)
+
+#R PEDSCPN GLASGOW COMA SCALE (AGE GREATER THAN 2 YEARS) EYE OPE
+make_new_columns(225, flowsheet, ['GCS_E'], newcols1 = eye223)
+
+#R GLASGOW COMA SCALE SCORE
+make_new_columns(258, flowsheet, ['GCS'], True)
+
+#R NSR GLASGOW COMA SCALE SCORE
+make_new_columns(259, flowsheet, ['GCS'], True)
+#R PEDSCPN GLASGOW COMA SCALE SCORE (AGE 6 MONTHS TO 2 YEARS)
+make_new_columns(260, flowsheet, ['GCS'], True)
+#R PEDSCPN GLASGOW COMA SCALE SCORE (AGE GREATER THAN 2 YEARS)
+make_new_columns(251, flowsheet, ['GCS'], True)
+
+
 
 #CRT
-"""
-(98, 'R CAPILLARY REFILL: GENERAL')
-(99, 'R CAPILLARY REFILL: ICU')
-(100, 'R CAPILLARY REFILL: SECONDS')
-(357, 'R PVS CAPILLARY REFILL LLE')
-"""
+print_all(flowsheet)
+get_relevant_cols(flowsheet, 'Cap|Refill|CRT|Time')
+#R CAPILLARY REFILL: GENERAL
+crt98 = [[], [], ['Less than/equal to 2 seconds (All extremities)'], [], ['Greater than 2 seconds (All extremities)']]
+make_new_columns(98, flowsheet, ['CRT'], newcols1 = crt98)
 
-#Sats
+#R CAPILLARY REFILL: ICU
+crt99 = [[], [], ['<2', 'Brisk'], ['2 - 3'], ['3 - 5', 'Sluggish'], ['>5']]
+make_new_columns(99, flowsheet, ['CRT'], newcols1 = crt99)
+
+#R CAPILLARY REFILL: SECONDS
+crt100 = [[], [], ['Less than 2 seconds'], ['3 seconds'], ['4 seconds'], ['5 seconds'], ['Greater than 6 seconds']]
+make_new_columns(100, flowsheet, ['CRT'], newcols1 = crt100)
+
+#R PVS CAPILLARY REFILL LLE
+crt357 = [[], [1, '2'], [2, '2'], [3, '3'], [4, '4', '4+']]
+make_new_columns(357, flowsheet, ['CRT'], newcols1 = crt357)
+
+#R PVS CAPILLARY REFILL RLE
+make_new_columns(573, flowsheet, ['CRT'], newcols1 = crt357)
+
+
+####Sats
+print_all(flowsheet)
+get_relevant_cols(flowsheet, 'sat|spo2|oxygen|\%|percent')
+# R EVENT SPO2
+make_new_columns(213, flowsheet, ['SpO2'], True)
 
 #Bodyweight
 
