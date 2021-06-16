@@ -128,9 +128,26 @@ for i in range(len(topcols)):
 sortedNaNs = np.argsort(numNotNa)
 
 
+## Work out which columns overlap
+def overlapping_columns(sheet):
+    """ 
+    Function that returns columns which have other subsets
+    """
+    columns = sheet.columns
+    subsets = list()
+    for i in columns:
+        subset = list()
+        for j in (k for k in columns if k != i):
 
+            #Work out if col j is a subset of col i
+            j_locs = (sheet[j].isna() == False)
+            all_same = all(sheet.loc[j_locs, j] == sheet.loc[j_locs, i])
+            if all_same:
+                subset.append(j)
+        subsets.append(subset)
 
-#Split up data hour by hour?
+    return subsets
+
 
 
 ## Helper function to redefine and merge columns
@@ -1345,93 +1362,25 @@ apply_demographic('sex', demographics, flowsheet, 'sex', False)
 apply_demographic('ethnicity_name', demographics, flowsheet, 'ethnicity', False)
 
 
+
+
+### May need to estimate bodyweight for patients with no bodyweight
+
+
+
+### Resp rate
+
+
+### Ecmo and CRRT 
+
+
+
+
+
+
+### Pull only patients which have enough data?
+
+
 ### Save the data so that can run childsds in R
 flowsheet.to_csv('Project/Project_data/files/flowsheet_output.csv')
 
-##### Some splitting by patient
-
-#Split up by patient
-def split_by_pt(sheet, col):
-    """
-    Function to split up a sheet by patient \n
-    Takes a pd.DataFrame, specify column as text
-    """
-    patient_dfs = list()
-    unique_patients = sheet[col].unique()
-    
-    #Work through the the patients and split into new sheets
-    for i, j in enumerate(unique_patients):
-        temp_df = sheet.loc[sheet[col] == j, :]
-        patient_dfs.append(temp_df) 
-
-    return patient_dfs
-
-#Start with only numeric values for now
-def return_numeric(sheet):
-    """
-    Function to return only the numeric columns in a sheet
-    """
-
-    #Work out which columns are numeric
-    numeric_dtypes = sheet.dtypes.unique()
-    sheet_dtypes = sheet.dtypes.isin(numeric_dtypes[[1, 2, 3]])
-    
-    #Make sure you keep the patient ID
-    sheet_dtypes[0] = True
-    return sheet.loc[:, sheet_dtypes]
-
-numeric_flowsheet = return_numeric(flowsheet)
-
-flowsheet_pt_split = split_by_pt(numeric_flowsheet, 'project_id')
-
-
-#Do some plotting
-def plot_PICU_params(df, patient, title="", xlabel='Date/Time', ylabel='Value', dpi=500):
-    ''' 
-    Function to do some plotting of timeseries data, plots multiple parameters for same patient
-    Takes parameters df (pandas dataframe), x and y values, plots them
-    You have to choose a label to print
-    Uses the input from the index
-    Should probably change this after making more composite values so only plotting composites
-    '''
-
-    #Choose columns which have fewest NaNs
-    pt_df = df[patient]
-    colnames = pt_df.columns
-    numNaNs = np.zeros([len(colnames) - 3])
-
-    #Work  through columns and get numbers of Nans
-    for i in range(3, len(colnames)):
-        isnan = pt_df.iloc[:, (i)].isna() == False
-        numNaNs[i - 3] = pt_df.loc[isnan, :].shape[0]
-
-    #Sort the NaNs
-    sortedNaNs = np.argsort(numNaNs)
-    top25locs = sortedNaNs[range(-25, 0)]
-    top25 = sortedNaNs[top25locs] + 3
-
-    #Instantiate figure 
-    fig, axs = plt.subplots(5, 5, figsize=(15,15), sharex=True)
-
-    #Work through the different patients
-    for i in range(5):
-        for j in range(5):
-
-            #Choose the correct column
-            column = colnames[top25[5*i + j]]
-            
-            #First object in list for each pt is list of vars
-            x = pt_df['taken_datetime']
-            y = pt_df[column]
-            axs[i, j].plot(x, y)
-            axs[i, j].set_title(column)
-
-    for ax in axs.flat:
-        ax.set(xlabel='time', ylabel='value')
-
-    
-    #Save it
-    fig.savefig('Project/PICU_project/figs/PICU_plots' + str(patient) + '.png')
-
-for i in range(15):
-    plot_PICU_params(flowsheet_pt_split, i)
