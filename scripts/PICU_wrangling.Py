@@ -10,8 +10,8 @@ from itertools import chain
 import re
 
 #Import the files - start with the massive flowsheet one
-flowsheet = pd.read_csv('Project/Project_data/files/caboodle_patient_selected_flowsheetrows_main_pivot.csv', sep= ',', parse_dates=['taken_datetime'])
-demographics = pd.read_csv('Project/Project_data/files/caboodle_patient_demographics.csv', sep = ',', parse_dates = ['birth_date', 'death_date'])
+flowsheet = pd.read_csv('~/Project/Project_data/files/caboodle_patient_selected_flowsheetrows_main_pivot.csv', sep= ',', parse_dates=['taken_datetime'])
+demographics = pd.read_csv('~/Project/Project_data/files/caboodle_patient_demographics.csv', sep = ',', parse_dates = ['birth_date', 'death_date'])
 
 
 
@@ -101,9 +101,10 @@ def print_allunique(sheet, column, printAll = True):
 
 #Think about which variables are seen the most and the least
 #Should help with what is worth going through
-
+#Not run
+"""
 #This takes ages so I've saved it, only rerun if needed
-if (os.path.exists('Project/Project_data/files/not_NA.csv') == False):
+if (os.path.exists('~/Project/Project_data/files/not_NA.csv') == False):
     colnames = flowsheet.columns
     numNotNa = np.zeros([len(colnames) - 3])
 
@@ -118,15 +119,15 @@ if (os.path.exists('Project/Project_data/files/not_NA.csv') == False):
 
     bar.finish()
     
-    np.savetxt('Project/Project_data/files/not_NA.csv', numNotNa, delimiter=',')
+    np.savetxt('~/Project/Project_data/files/not_NA.csv', numNotNa, delimiter=',')
 else: 
-    numNotNa = np.genfromtxt('Project/Project_data/files/not_NA.csv', delimiter=',')
+    numNotNa = np.genfromtxt('~/Project/Project_data/files/not_NA.csv', delimiter=',')
 
 topcols = colnames[np.append(np.array([False, False, False]), numNotNa > 10000)]
 for i in range(len(topcols)):
     print(topcols[i])
 sortedNaNs = np.argsort(numNotNa)
-
+"""
 
 ## Work out which columns overlap
 def overlapping_columns(sheet):
@@ -521,6 +522,34 @@ def fill_missing(original_column, sheet, new_col, missing = np.nan):
     sheet.loc[na_locs, new_col] = 1
     sheet.loc[na_locs, original_column] = missing
 
+def interpolate_cols(column, sheet, method, how_far = 60, limit_direction = 'both', fill = 0, *args):
+    """ 
+    Function to interpolate some columns \n
+    Method, how_far, limit_direction inherit from pd.interpolate \n
+    Fill then fills in the rest of the columns with a filler \n
+    Do you want to make a new column to interpolate into? - xgboost can handle NaNs
+    """
+
+    #Get the unique values flexibly
+    column = return_colname(column, sheet)
+
+    #Work through the patients
+    unique_patients = sheet['project_id'].unique()
+    
+    for i in unique_patients:
+        pt_locs = sheet['project_id'] == i
+        
+        #Now interpolate
+        sheet.loc[pt_locs, column].interpolate(method = method,limit = how_far, limit_direction = limit_direction, inplace = True)
+
+    #Allow fill to 
+    na_locs = sheet[column].isna() == True
+    if callable(fill):
+        sheet.loc[na_locs, column] = fill(column, sheet.loc[na_locs, :], *args)
+    sheet.loc[na_locs, column] = fill
+        
+        
+    
 
 
 
@@ -530,11 +559,32 @@ def fill_missing(original_column, sheet, new_col, missing = np.nan):
 
 
 #### Now enforce a minute by minute time frame
+#Frames for start and end dates
+start_dates = pd.Series([], dtype = 'datetime64[ns]')
+end_dates = pd.Series([], dtype = 'datetime64[ns]')
 
+#Fill them
+unique_patients = flowsheet['project_id'].unique()
+for i in unique_patients:
+    locs = flowsheet['project_id'] == i
+    times = flowsheet.loc[locs, 'taken_datetime']
+    sorted_times = np.argsort(times)
+    start = sorted_times == min(sorted_times)
+    finish = sorted_times == max(sorted_times)
+    start_dates = start_dates.append(times[start])
+    end_dates = end_dates.append(times[finish])
 
+#Now make a new series to merge to which contains all of the possible time points
+all_times = pd.DataFrame(pd.Series([], dtype = 'datetime64[ns]'), columns =['taken_datetime'])
+all_times = all_times.append(pd.DataFrame([], columns = ['project_id']))
+for i in range(len(unique_patients)):
+    times = pd.date_range(start = start_dates[start_dates.index[i]], end = end_dates[end_dates.index[i]], freq = 'min')
+    patient = pd.Series([unique_patients[i]]*len(times))
+    times_df = pd.DataFrame({'taken_datetime': times, 'project_id': patient})
+    all_times = all_times.append(times_df)
 
-
-
+flowsheet = all_times.merge(flowsheet, how = 'outer', on = ['taken_datetime', 'project_id'])
+flowsheet.to_csv('~/Project/Project_data/files/flowsheet_all_times.csv')
 
 #### Now do some feature engineering
 
@@ -1035,6 +1085,19 @@ fill_missing('Tracheostomy', flowsheet, 'Tracheostomy_missing')
 fill_missing('Ventilation(ml)', flowsheet, 'Ventilation(ml)_missing')
 fill_missing('MeanAirwayPressure', flowsheet, 'MeanAirwayPressure_missing')
 
+#Now do interpolation
+interpolate_cols('Ventilation', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
+interpolate_cols('O2Flow/kg', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+interpolate_cols('IPAP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+interpolate_cols('EPAP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+interpolate_cols('FiO2', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0.21)
+interpolate_cols('PEEP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+interpolate_cols('HFO', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
+interpolate_cols('Tracheostomy', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
+interpolate_cols('Ventilation(ml)', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+interpolate_cols('MeanAirwayPressure', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+
+flowsheet.to_csv('~/Project/Project_data/files/flowsheet_ventilation_interpolated.csv')
 #### Work on BP now
 
 """
@@ -1159,8 +1222,21 @@ fill_missing('SysBP', flowsheet, 'SysBP_missing')
 fill_missing('DiaBP', flowsheet, 'DiaBP_missing')
 fill_missing('MAP', flowsheet, 'MAP_missing')
 
+#Possibly need a better solution for zero fill here? maybe expected normal for age?
+def fill_median_BP(column, sheet):
+    """Function to fill in median values where BP missing despite interpolation
+    Not finished
+    """
 
+    column = return_colname(column, sheet)
+    ages = np.array([0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 15, 25])
+    SysBP_medians = np.array([])
+    switcher = {}
+    
 
+interpolate_cols('SysBP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+interpolate_cols('DiaBP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+interpolate_cols('MAP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
 
 
 
@@ -1180,6 +1256,9 @@ make_new_columns('R AN SPO2 HR PULSE', flowsheet, ['HR'], True)
 make_new_columns('R GOSH IP HEART RATE PLETHYSMOGRAM', flowsheet, ['HR'], True)
 
 fill_missing('HR', flowsheet, 'HR_missing')
+
+#Should probably do something as above with median HR
+interpolate_cols('HR', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
 
 #GCS/ AVPU
 print_all(flowsheet)
@@ -1254,7 +1333,8 @@ flowsheet.loc[GCS_nas, 'GCS'] = flowsheet.loc[GCS_nas, 'GCS_E'] + flowsheet.loc[
 
 fill_missing('GCS', flowsheet, 'GCS_missing')
 fill_missing('AVPU', flowsheet, 'AVPU_missing')
-fill_missing('SysBP', flowsheet, 'SysBP_missing')
+interpolate_cols('GCS', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 15)
+interpolate_cols('AVPU', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 3)
 
 #CRT
 print_all(flowsheet)
@@ -1277,6 +1357,10 @@ make_new_columns('R PVS CAPILLARY REFILL LLE', flowsheet, ['CRT'], newcols1 = cr
 
 #R PVS CAPILLARY REFILL RLE
 make_new_columns('R PVS CAPILLARY REFILL RLE', flowsheet, ['CRT'], newcols1 = crt357)
+
+fill_missing('CRT', flowsheet, 'CRT_missing')
+interpolate_cols('CRT', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 2)
+
 
 
 ####Sats
@@ -1303,7 +1387,8 @@ make_new_columns('R PULSE OXIMETRY PRE-DUCTAL_%', flowsheet, ['SpO2'], True)
 #R CV SYSTEMIC ARTERIAL O2 SATURATION_%
 make_new_columns('R CV SYSTEMIC ARTERIAL O2 SATURATION_%', flowsheet, ['SpO2'], True)
 
-
+fill_missing('SpO2', flowsheet, 'SpO2_missing')
+interpolate_cols('SpO2', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 95)
 
 
 
@@ -1435,7 +1520,10 @@ def corMilrinone(input):
 conv_column('R GOSH MILRINONE HOURLY VOLUME_mL', flowsheet, 'EquivMilrinone', corMilrinone)
 sum_inout('EquivMilrinone', flowsheet, 'Inotropes')
 
-
+def aoverb(a, b):
+    return a/b
+conv_2cols('Inotropes', 'interpolated_wt_kg', flowsheet, 'Inotropes_kg', aoverb)
+fill_missing('Inotropes', flowsheet, 'Inotropes_missing')
 
 
 
@@ -1459,17 +1547,21 @@ make_new_columns('RESPIRATIONS', flowsheet, ['RR'], True)
 
 #379 For R GOSH VENT RATE OBSERVED
 #print_allunique(flowsheet, 379)
+fill_missing('RR', flowsheet, 'RR_missing')
 
+#Need to do something about normals here too
+interpolate_cols('RR', flowsheet, 'linear', how_far = 60, limit_direction = 'forward', fill = 15)
+flowsheet.to_csv('~/Project/Project_data/files/flowsheet_nearly_interpolated.csv')
 
 ### Get demographics
 apply_demographic('birth_date', demographics, flowsheet, 'Age_yrs')
-flowsheet['time_to_death'] = 70
+flowsheet['time_to_death'] = np.timedelta64(70, 'Y')
 apply_demographic('death_date', demographics, flowsheet, 'time_to_death')
 apply_demographic('deceased_flag', demographics, flowsheet, 'died', False)
 apply_demographic('sex', demographics, flowsheet, 'sex', False)
 apply_demographic('ethnicity_name', demographics, flowsheet, 'ethnicity', False)
 
-
+flowsheet.to_csv('~/Project/Project_data/files/flowsheet_demographics_applied.csv')
 
 
 
@@ -1513,23 +1605,26 @@ make_new_columns('R GOSH UF VOLUME HD/HDF', flowsheet, ['dialysis'], new_cols1 =
 #769 R GOSH CRRT UF
 #print_allunique(flowsheet, 769)
 make_new_columns('R GOSH CRRT UF', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R GOSH CRRT UF', 2, 2))
-
+fill_missing('dialysis', flowsheet, 'dialysis_missing')
+interpolate_cols('dialysis', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
 
 #ECMO
 get_relevant_cols(flowsheet, 'ECMO')
-make_new_columns('R ECMO  FLOW PROBE', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 147, 2, 2))
-make_new_columns('R GOSH LDA ECMO LINE STATUS', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 185, 2, 2))
-make_new_columns('R ECMO PUMP FLOW (L/MIN)_L/min', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 186, 2, 2))
-make_new_columns('R ECMO CLAMPS CHECK', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 188, 2, 2))
-make_new_columns('GOSH ICU ECMO HCT', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 190, 2, 2))
-make_new_columns('R ECMO ON/OFF', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 279, 2, 2))
-make_new_columns('R ECMO HEAT EXCHANGER WATER LEVEL', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 280, 2, 2))
-make_new_columns('R HOURS ON ECMO', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 295, 2, 2))
-make_new_columns('R GOSH ECMO NUMBER CIRCUITS', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 423, 2, 2))
+make_new_columns('R ECMO  FLOW PROBE', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 147, 2, 2))
+make_new_columns('R GOSH LDA ECMO LINE STATUS', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 185, 2, 2))
+make_new_columns('R ECMO PUMP FLOW (L/MIN)_L/min', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 186, 2, 2))
+make_new_columns('R ECMO CLAMPS CHECK', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 188, 2, 2))
+make_new_columns('GOSH ICU ECMO HCT', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 190, 2, 2))
+make_new_columns('R ECMO ON/OFF', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 279, 2, 2))
+make_new_columns('R ECMO HEAT EXCHANGER WATER LEVEL', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 280, 2, 2))
+make_new_columns('R HOURS ON ECMO', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 295, 2, 2))
+make_new_columns('R GOSH ECMO NUMBER CIRCUITS', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 423, 2, 2))
+fill_missing('ECMO', flowsheet, 'ECMO_missing')
+interpolate_cols('ECMO', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
 
 ### Pull only patients which have enough data?
 
 
 ### Save the data so that can run childsds in R
-flowsheet.to_csv('Project/Project_data/files/flowsheet_output.csv')
+flowsheet.to_csv('~/Project/Project_data/files/flowsheet_final_output.csv')
 
