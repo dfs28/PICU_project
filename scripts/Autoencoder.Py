@@ -15,6 +15,16 @@ import seaborn as sns
 flowsheet = pd.read_csv('~/Project/Project_data/files/flowsheet_output.csv', parse_dates = ['taken_datetime'])
 
 
+<<<<<<< HEAD
+=======
+
+#Read in the data
+flowsheet = pd.read_csv('~/Project/Project_data/files/flowsheet_output.csv', parse_dates = ['taken_datetime'])
+
+#
+
+
+>>>>>>> bea017653b024ec68599bb0f43104fb696b0e1e6
 """
 training_data = pd.read_csv('Project/PICU_project/practice_data/datatraining.txt')
 training_array = np.array(training_data.loc[:, training_data.columns[1:-1]])
@@ -95,6 +105,7 @@ def make_3d_array(array, length, cols):
     array_3d = np.empty((len(to_use), y_dim, x_dim))
 
     #Outcomes
+<<<<<<< HEAD
     outcomes = np.zeros((len(to_use), 5))
     pt_slices = list()
 
@@ -137,6 +148,38 @@ def test_trainsplit(array, split):
     split is an np.ndarray
     """
 
+=======
+    outcomes = np.zeros((len(to_use), 3))
+    pt_slices = list()
+
+    for position, i in enumerate(to_use):
+        start_position = i*length
+        end_position = (i + 1)*length
+        temp_array = array_use[start_position:end_position, :]
+        array_3d[position, :, :] = temp_array.transpose()
+
+        #Build the outcomes
+        if array.loc[end_position, 'died'] == 'Y':
+            outcomes[position, 0] = 1
+        if array.loc[end_position, 'time_to_death'] <= 2/365:
+            outcomes[position, 1] = 1
+        if np.isnan(array.loc[end_position, 'time_to_death']):
+            outcomes[position, 2] = 70
+        else:
+            outcomes[position, 2] = array.loc[end_position, 'time_to_death']
+    
+    na_loc = np.isnan(array_3d)
+    array_3d[na_loc] = 0
+
+    return array_3d, outcomes, slicesPerPatient
+
+def test_trainsplit(array, split):
+    """
+    Function to split up 3d slices into test, train, validate
+    split is an np.ndarray
+    """
+
+>>>>>>> bea017653b024ec68599bb0f43104fb696b0e1e6
     #Flexibly choose dimension to split along
     shape = array3d.shape
     z_dim = np.max(shape)
@@ -162,12 +205,18 @@ def test_trainsplit(array, split):
 
 length = 60
 array3d, outcomes, slicesPerPatient = make_3d_array(flowsheet, length, cols)
+<<<<<<< HEAD
 split_array = test_trainsplit(array3d, np.array([70, 15, 15]))
 split_outcomes = test_trainsplit(outcomes, np.array([70, 15, 15]))
 train_array = split_array[0]
 train_outcomes = split_outcomes[0]
 testing_array = split_array[1]
 testing_outcomes = split_outcomes[1]
+=======
+split_array = test_trainsplit(array, np.array([70, 15, 15]))
+train_array = split_array[0]
+testing_array = split_array[1]
+>>>>>>> bea017653b024ec68599bb0f43104fb696b0e1e6
 input_shape = train_array.shape
 input_timeseries = keras.Input(shape = input_shape[1:])
 
@@ -175,15 +224,22 @@ input_timeseries = keras.Input(shape = input_shape[1:])
 # This is the encoder - set the shape to be the shape of the timeseries data
 x = layers.Conv1D(30, 16, activation='relu', padding = 'same')(input_timeseries)
 x = layers.Conv1D(15, 16, activation='relu', padding = 'same')(x)
+<<<<<<< HEAD
 encoded = layers.Conv1D(8, 16, activation='relu', padding = 'same')(x)
+=======
+encoded = layers.Conv1D(18, 16, activation='relu', padding = 'same')(x)
+>>>>>>> bea017653b024ec68599bb0f43104fb696b0e1e6
 
 #Now make the docoder
 x = layers.Conv1D(15, 16, activation = 'relu', padding = 'same')(encoded)
 x = layers.Conv1D(30, 16, activation= 'relu', padding = 'same')(x)
 decoded = layers.Conv1D(60, 16, activation = 'sigmoid', padding = 'same')(x)
+<<<<<<< HEAD
 
 # This model maps an input to its encoded representation
 encoder = keras.Model(input_timeseries, encoded)
+=======
+>>>>>>> bea017653b024ec68599bb0f43104fb696b0e1e6
 
 autoencoder = keras.Model(input_timeseries, decoded)
 autoencoder.compile(optimizer='adam', loss='binary_crossentropy',  metrics=['accuracy'])
@@ -195,6 +251,7 @@ history = autoencoder.fit(train_array, train_array,
                 validation_data=(testing_array, testing_array))
 
 
+<<<<<<< HEAD
 #Plot the history
 # list all data in history
 print(history.history.keys())
@@ -229,6 +286,13 @@ x = layers.Conv1D(15, 16, activation = 'relu', padding = 'same')(encoded)
 x = layers.Conv1D(30, 16, activation= 'relu', padding = 'same')(x)
 decoded = layers.Conv1D(60, 16, activation = 'sigmoid', padding = 'same')(x)
 
+=======
+autoencoder.fit(train_array, train_array,
+                epochs=1000,
+                batch_size=81,
+                shuffle=True,
+                validation_data=(testing_array, testing_array))
+>>>>>>> bea017653b024ec68599bb0f43104fb696b0e1e6
 """
 # This is the size of our encoded representations
 encoding_dim = 32  # 32 floats -> compression of factor 24.5, assuming the input is 784 floats
@@ -267,7 +331,10 @@ print(x_test.shape)
 """
 
 #Format the test data
+<<<<<<< HEAD
 
+=======
+>>>>>>> bea017653b024ec68599bb0f43104fb696b0e1e6
 
 #### Now apply the encoding to some digits
 # Note that we take them from the *test* set
