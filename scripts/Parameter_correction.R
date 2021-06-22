@@ -5,7 +5,7 @@ library(childsds)
 library(rriskDistributions)
 
 #Read in the sheet
-flowsheet = read.csv('~/Project/Project_data/files/flowsheet_output.csv')
+flowsheet = read.csv('Documents/Masters/Course materials/Project/PICU project/flowsheet_output.csv')
 
 #Will need to go through and only do corrections for that age range, then do the corretions for younger children
 
@@ -20,7 +20,7 @@ flowsheet$Weight_z_scores =  sds(flowsheet$interpolated_weight_kg,
             type = 'SDS')
 
 
-#### Build corrections using tables
+#### Build corrections using tables - do I need an over 15 case?
 BP_df = data.frame(age = c(0.008, 1, 2, 5, 8, 12, 15), 
                    SBP_lower = c(67, 72, 86, 89, 97, 102, 110), 
                    SBP_higher = c(84, 104, 106, 112, 115, 120, 131), 
@@ -57,7 +57,8 @@ flowsheet$MAP_zscore = unlist(sapply(1:dim(flowsheet)[1], normalise, input = as.
 
 
 ### Do HR, RR correction
-RR_cutoffs <- data.frame(age = c(0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 15, 25), 
+age = c(0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 15, 25)
+RR_cutoffs <- data.frame(age, 
                          first = c(25, 24, 23, 22, 21, 19, 18, 17, 17, 16, 14, 12, 11), 
                          tenth = c(34, 33, 31, 30, 28, 25, 22, 21, 20, 18, 16, 15, 13), 
                          quarter = c(40, 38, 36, 35, 32, 29, 25, 23, 21, 20, 18, 16, 15),
@@ -66,129 +67,48 @@ RR_cutoffs <- data.frame(age = c(0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 15,
                          ninetieth = c(57, 55, 52, 50, 46, 40, 34, 29, 27, 24, 22, 21, 19), 
                          ninety9th = c(66, 64, 61, 58, 53, 46, 38, 33, 29, 27, 25, 23, 22))
 
-HR_cutoffs <- data.frame(age = c(0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 15, 25),
-                         first = c(90, 107, 104, 98, 93, 88, 82, 76, 70, 65, 59, 52, 47, 43), 
-                         tenth = c(107, 123, 120, 114, 109, 103, 98, 92, 86, 81, 74, 67, 62, 58), 
-                         quarter = c(116, 133, 129, 123, 118, 112, 106, 100, 94, 89, 82, 75, 69, 65), 
-                         median = c(127, 143, 140, 134, 128, 123, 116, 110, 104, 98, 91, 84, 78, 73), 
-                         threequarter = c(138, 154, 150, 143, 137, 132, 126, 119, 113, 108, 101, 93, 87, 83), 
-                         ninetieth = c(148, 164, 159, 152, 145, 140, 135, 128, 123, 117, 111, 103, 96, 92), 
-                         ninety9th = c(164, 181, 175, 168, 161, 156, 149, 142, 136, 131, 123, 115, 108, 104))
-
-get_meansd <- function(p, q){}
+HR_cutoffs <- data.frame(age,
+                         first = c(107, 104, 98, 93, 88, 82, 76, 70, 65, 59, 52, 47, 43), 
+                         tenth = c(123, 120, 114, 109, 103, 98, 92, 86, 81, 74, 67, 62, 58), 
+                         quarter = c(133, 129, 123, 118, 112, 106, 100, 94, 89, 82, 75, 69, 65), 
+                         median = c(143, 140, 134, 128, 123, 116, 110, 104, 98, 91, 84, 78, 73), 
+                         threequarter = c(154, 150, 143, 137, 132, 126, 119, 113, 108, 101, 93, 87, 83), 
+                         ninetieth = c(164, 159, 152, 145, 140, 135, 128, 123, 117, 111, 103, 96, 92), 
+                         ninety9th = c( 181, 175, 168, 161, 156, 149, 142, 136, 131, 123, 115, 108, 104))
 
 
-
-
-
-
-
-
-SBP = sds(flowsheet$SysBP, 
-        age = flowsheet$Age_yrs, 
-        sex = flowsheet$sex,
-        male = 'M', 
-        female = 'F', 
-        ref = bp_wuehl_age.ref, 
-        item = 'SBP_24h', 
-        type = 'SDS')
-
-DiaBP = sds(flowsheet$SysBP, 
-        age = flowsheet$Age_yrs, 
-        sex = flowsheet$sex,
-        male = 'M', 
-        female = 'F', 
-        ref = bp_wuehl_age.ref, 
-        item = 'DBP_24h', 
-        type = 'SDS')
-
-#Calculate and correct MAP
-MAP = abs(as.numeric(flowsheet$MAP))
-na_locs = which(!is.na(flowsheet$SysBP) & !is.na(flowsheet$DiaBP))
-MAP[na_locs] = as.numeric(flowsheet$DiaBP)[na_locs]*(2/3) + as.numeric(flowsheet$SysBP)[na_locs]/3
-
-MAP_sds = rep(NA, length(MAP))
-
-
-#Try this with try and keep making the gap smaller
-for (i in seq(1, length(MAP), 10000)){
-    MAP_sds[i:(i + 9999)] = try(sds(MAP[i:(i + 9999)], 
-                            age = flowsheet$Age_yrs[i:(i + 9999)], 
-                            sex = flowsheet$sex[i:(i + 9999)],
-                            male = 'M', 
-                            female = 'F', 
-                            ref = bp_wuehl_age.ref, 
-                            item = 'MAP_24h', 
-                            type = 'SDS'))
-
-        
-        if (all(is.na(as.numeric(MAP_sds[i:(i + 9999)])))){
-                for (j in seq(i, i + 9999, 100)){
-                        MAP_sds[j:(j + 99)] =  try(sds(MAP[j:(j + 99)], 
-                                                age = flowsheet$Age_yrs[j:(j + 99)], 
-                                                sex = flowsheet$sex[j:(j + 99)],
-                                                male = 'M', 
-                                                female = 'F', 
-                                                ref = bp_wuehl_age.ref, 
-                                                item = 'MAP_24h', 
-                                                type = 'SDS'))
-
-                }
-
-                if (all(is.na(as.numeric(MAP_sds[j:(j + 99)])))){
-                        for (k in seq(j, j + 99)){
-                        MAP_sds[k] =        try(sds(MAP[k], 
-                                                age = flowsheet$Age_yrs[k], 
-                                                sex = flowsheet$sex[k],
-                                                male = 'M', 
-                                                female = 'F', 
-                                                ref = bp_wuehl_age.ref, 
-                                                item = 'MAP_24h', 
-                                                type = 'SDS'))
-
-        
-                        }
-                }
-        }
+get_meansd <- function(q, p){
+  #Function to return mean and sd
+  a <- get.norm.par(p, q)
+  c(a[1], a[2])
 }
-error_message <- which(!is.na(MAP_sds) & is.na(as.numeric(MAP_sds)))
-sum(MAP_sds[error_message] == "Error in if (nu != 0) z <- (((q/mu)^nu - 1)/(nu * sigma)) else z <- log(q/mu)/sigma : \n  argument is of length zero\n")
 
-#Going to have to find some normal values for different ages and then build a reference table as below for children under 5
+#Should probably export these curves and use them
+RR_meansd <- t(apply(RR_cutoffs[, 2:dim(HR_cutoffs)[2]], 1, get_meansd, p = c(0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99)))
+RR_meansd <- data.frame(age, mean = RR_meansd[,1], sd = RR_meansd[,2])
+HR_meansd <- t(apply(HR_cutoffs[, 2:dim(HR_cutoffs)[2]], 1, get_meansd, p = c(0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99)))
+HR_meansd <- data.frame(age, mean = HR_meansd[,1], sd = HR_meansd[,2])
 
-pdf("~/Project/PICU_project/figs/SBP_hist_SDs.pdf")
-par(mfrow = c(2, 1))
-hist(SBP, main = 'Histogram of systolic blood pressure standard deviations', xlab = 'SD')
-hist(DiaBP, main = 'Histogram of diastolic blood pressure standard deviations', xlab = 'SD')
-dev.off()
 
-anthro <- data.frame(age = c(11.61,12.49,9.5,10.42,8.42,10.75,9.57,10.48),
-                    height = c(148.2,154.4,141.6,145.3,146,140.9,145.5,150),
-                    sex = sample(c("male","female"), size = 8, replace = TRUE),
-                    weight = c(69.5,72.65,47.3,51.6,45.6,48.9,53.5,58.5))
-                    
-anthro$height_sds <- sds(anthro$height,
-                        age = anthro$age,
-                        sex = anthro$sex, 
-                        male = "male", 
-                        female = "female",
-                        ref = kro.ref,
-                        item = "height",
-                        type = "SDS")
 
-anthro$bmi <- anthro$weight/(anthro$height**2) * 10000
-anthro$bmi_perc <- sds(anthro$bmi,age = anthro$age,sex = anthro$sex, male = "male", female = "female",ref = kro.ref,item = "bmi",type = "perc")
 
-data(who.ref)
-x <- data.frame(height=c(50,100,60,54),
-                            sex=c("m","f","f","m"),
-                            age=c(0,2.9,0.6,0.2))
-                            
-sds(value = x$height, age = x$age, sex = x$sex, male = "m", female = "f", ref = who.ref, item = "height")
 
-data(kiggs.ref)
-print(kiggs.ref)
-data(ukwho.ref)
-print(ukwho.ref)
-data(who.ref)
-print(who.ref)
+#Now calculate z-scores
+calc_zscore <- function(row, sheet, input_col, age_col, scortab) {
+  #Function to calculate z-scores from table of mean and sd
+  
+  #Get age range
+  age_range = which(scortab$age > sheet[row, age_col])[1]
+  if (is.na(age_range)) {age_range = dim(scortab)[1]}
+  
+  #Get absolute distance from mean
+  dev = sheet[row, input_col] - scortab$mean[age_range]
+  
+  #Get distance from med
+  return(dev/scortab$sd[age_range])
+  
+}
+
+calc_zscore(1, flowsheet, 'HR', 'Age_yrs', HR_meansd)
+flowsheet$HR_zscore = sapply(1:dim(flowsheet)[1], calc_zscore, sheet = flowsheet, input_col = 'HR', age_col = 'Age_yrs', scortab = HR_meansd)
+flowsheet$RR_zscore = sapply(1:dim(flowsheet)[1], calc_zscore, sheet = flowsheet, input_col = 'RR', age_col = 'Age_yrs', scortab = RR_meansd)
