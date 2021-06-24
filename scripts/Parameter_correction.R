@@ -4,7 +4,7 @@
 library(childsds)
 
 #Read in the sheet
-flowsheet = read.csv('Documents/Masters/Course materials/Project/PICU project/flowsheet_output.csv')
+flowsheet = read.csv('/store/DAMTP/dfs28/PICU_data/flowsheet_output_touse.csv', header = TRUE, sep = ',')
 
 #Will need to go through and only do corrections for that age range, then do the corretions for younger children
 
@@ -55,6 +55,8 @@ flowsheet$DBP_zscore = unlist(sapply(1:dim(flowsheet)[1], normalise, input = flo
 flowsheet$MAP_zscore = unlist(sapply(1:dim(flowsheet)[1], normalise, input = as.numeric(flowsheet$MAP), age = flowsheet$'Age.yrs.', type = 'MAP', BP_df = BP_df))
 
 #Need to read in the other things
+HR_meansd = read.csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/HR_meansd.csv', sep = ',', header = TRUE)
+RR_meansd = read.csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/RR_meansd.csv', sep = ',', header = TRUE)
 
 #Now calculate z-scores
 calc_zscore <- function(row, sheet, input_col, age_col, scortab) {
@@ -75,3 +77,5 @@ calc_zscore <- function(row, sheet, input_col, age_col, scortab) {
 calc_zscore(1, flowsheet, 'HR', 'Age_yrs', HR_meansd)
 flowsheet$HR_zscore = sapply(1:dim(flowsheet)[1], calc_zscore, sheet = flowsheet, input_col = 'HR', age_col = 'Age_yrs', scortab = HR_meansd)
 flowsheet$RR_zscore = sapply(1:dim(flowsheet)[1], calc_zscore, sheet = flowsheet, input_col = 'RR', age_col = 'Age_yrs', scortab = RR_meansd)
+
+write.csv(flowsheet, '/store/DAMTP/dfs28/PICU_data/flowsheet_zscores.csv')
