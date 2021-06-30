@@ -12,12 +12,7 @@ import re
 #Import the files - start with the massive flowsheet one
 flowsheet = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/caboodle_patient_selected_flowsheetrows_main_pivot.csv', sep= ',', parse_dates=['taken_datetime'])
 demographics = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/caboodle_patient_demographics.csv', sep = ',', parse_dates = ['birth_date', 'death_date'])
-
-
-
-
-
-
+medications = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/caboodle_patient_selected_medication_admins_main.csv', sep = ',', parse_dates = ['start_datetime', 'end_datetime'])
 
 
 ##### Make a whole load of helper functions to help with cleaning
@@ -318,7 +313,7 @@ def conv_BP(original_column, sheet, SysDia, *new_cols):
     if SysDia in ['Three', 'Both', 'both', 'three', 3]:
         new_sheet = sheet.loc[:, (original_column)].str.split("/", n = 1, expand = True)
         new_sheet = new_sheet.astype('float')
-        new_sheet['MAP'] = new_sheet.loc[:, 0]*(1/3) + new_sheet.loc[:, 0]*(2/3)
+        new_sheet['MAP'] = new_sheet.loc[:, 0]*(1/3) + new_sheet.loc[:, 1]*(2/3)
     else:
         new_sheet = sheet.loc[:, (original_column)]
 
@@ -388,6 +383,10 @@ def sum_inout(original_column, sheet, new_col):
     #Find the values that are Na
     na_locs = (sheet.loc[:, original_column].isna() == False)
     new_values = sheet.loc[na_locs, original_column]
+
+    #If new column has nas where going to add make these zero
+    both_na = sheet[new_col].isna() & na_locs
+    sheet.loc[both_na, new_col] = 0
 
     #Now assign
     sheet.loc[na_locs, new_col] = sheet.loc[na_locs, new_col] + new_values
@@ -497,6 +496,83 @@ def apply_demographic(original_column, demographic_sheet, flow_sheet, new_column
 
         #Fill in new column with these weights, scaling
         new_values.index = flow_sheet.loc[flowsheet_locs, new_column].index
+        flow_sheet.loc[flowsheet_locs, new_column] = new_values
+
+def get_unique_meds(medication_sheet, drug_name):
+    """
+    Function to query drug names
+    """
+
+    #Make the columns
+    unique_medications = np.sort(medication_sheet['drug_name'].unique())
+    drug_match = re.compile(drug_name)
+    drug_names = [i for i in unique_medications if drug_match.match(i) != None]
+
+    return drug_names
+
+all_doses = np.array([re.sub('(\d+\.*\d*)\s(.+)', r'\2', j) for i, j in enumerate(medications.loc[drug_locs, 'prn_dose']) if isinstance(j, str)])
+
+def apply_drugs(medication_sheet, flow_sheet, drug_name, new_col, conc, dose_conv = 1, units = False):
+    """
+    Function to apply medications in new columns to sheet
+    To use one formulation at a time
+    Actually just leave this out - was using for phenylephrine but seems that it is given PRN mostly so not helpful
+    """
+
+    #Get drug name
+    drug_name = get_unique_meds(medication_sheet, drug_name)
+    drug_name = drug_name[0]
+    
+    #Get locations
+    drug_locs = np.where(medication_sheet['drug_name'] == drug_name)
+
+    #Get durations - these turn out all to be 0
+    durations = medication_sheet.loc[drug_locs, 'end_datetime'] - medication_sheet.loc[drug_locs, 'start_datetime']
+    durations = durations / np.timedelta64(1, 'h')
+    durations = abs(durations)   
+
+    #Now correct for time
+
+    dose_hr = 
+
+    weight_doses = ['mg', 'mg/kg/min', 'micrograms', 'microg/kg/min', 'mL']
+    unit_doses = ['Million Units', 'Units', 'Units/hr', 'Units/kg/hr', 'microg/kg/min', 'mL']
+    mmol_doses = ['']
+
+    for i in drug_locs:
+
+    
+    unique_patients = flow_sheet['project_id'].unique()
+
+    for i in unique_patients:
+
+        #Get demographic value
+        demographic_loc = (demographic_sheet['project_id'] == i)
+        value = demographic_sheet.loc[demographic_loc, original_column]
+        
+        #Get location on flowsheet
+        flowsheet_locs = (flow_sheet['project_id'] == i)
+
+        #Make sequence of values
+        length = sum(flowsheet_locs)
+        new_values = np.repeat(value, length)
+
+        if age:
+            #Get date of variable in current time
+            dates = flow_sheet.loc[flowsheet_locs, 'taken_datetime']
+            dates = dates.dt.round('D')
+
+            #Make sequence of birth date
+            birth_dates = new_values
+            dates.index = birth_dates.index
+
+            #Calculate age and convert to years
+            ages = dates - birth_dates
+            new_values = ages / np.timedelta64(1, 'Y')
+            new_values = abs(new_values)    
+
+        #Fill in new column with these weights, scaling
+        new_values.index = flow_sheet.loc[flowsheet_locs, new_column].index
         flow_sheet.loc[flowsheet_locs, new_column] = new_values        
 
 
@@ -520,7 +596,7 @@ def fill_missing(original_column, sheet, new_col, missing = np.nan):
     sheet.loc[na_locs, new_col] = 1
     sheet.loc[na_locs, original_column] = missing
 
-def interpolate_cols(column, sheet, method, how_far = 60, limit_direction = 'both', fill = 0, *args):
+def interpolate_cols(column, sheet, method, *args, how_far = 60, limit_direction = 'both', fill = 0):
     """ 
     Function to interpolate some columns \n
     Method, how_far, limit_direction inherit from pd.interpolate \n
@@ -543,14 +619,46 @@ def interpolate_cols(column, sheet, method, how_far = 60, limit_direction = 'bot
     #Allow fill to 
     na_locs = sheet[column].isna() == True
     if callable(fill):
-        sheet.loc[na_locs, column] = fill(column, sheet.loc[na_locs, :], *args)
-    sheet.loc[na_locs, column] = fill
+        fill(column, sheet, *args)
+    else:
+        sheet.loc[na_locs, column] = fill
+
+
+#Median fill for BP and HR
+HR_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/HR_meansd.csv')
+RR_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/RR_meansd.csv')
+
+def fill_median_HRBP(column, sheet, typeHRBP):
+    """Function to fill in median values where BP missing despite interpolation
+    Takes a column to fill, sheet, and type should be one of 'SBP', 'DBP' or 'MAP', 'BP', 'HR' or 'RR'
+    """
+
+    column = return_colname(column, sheet)
+    na_locs = sheet[column].isna() == True
+
+    #Set up the median values
+    if typeHRBP in ['BP', 'SBP', 'DBP', 'MAP']:
+        age = [0.008, 1, 2, 5, 8, 12, 25]
+    elif typeHRBP in ['HR', 'RR']:
+        age = HR_meansd['age']
+    else:
+        raise ValueError('typeHRBP should be one of "SBP", "DBP" or "MAP", "BP", "HR" or "RR"')
+
+    #Get ages
+    age_range = np.full(sheet.shape[0], -1)
+    median_values = list()
+    for i, j in enumerate(age):
+        locations = (sheet['Age_yrs'] < j) & (age_range == -1)
+        age_range[locations] = i  
         
-        
-    
+        #Now get median values
+        notNas = (na_locs == False) & locations
+        median = np.median(sheet.loc[notNas, column])
+        median_values.append(median)
 
-
-
+    #Now fill in the values
+    median_BPs = np.array([median_values[j] for i, j in np.ndenumerate(age_range)])
+    sheet.loc[na_locs, column] = median_BPs[na_locs]
 
 #### Start by only including columns from within ITU admission
 
@@ -917,11 +1025,11 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
 
     #(320, 'R VENT INSP TIME_Sec')
     #print_allunique(flowsheet, 320)
-    make_new_columns('R VENT INSP TIME_Sec', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,'R VENT INSP TIME_Sec',  4, 5))
+    make_new_columns('R VENT INSP TIME_Sec', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,'R VENT INSP TIME_Sec',  4, 4))
 
     #(322, 'R AN AGENTS DESFLURANE INSPIRED_%')
     #print_allunique(flowsheet, 322)
-    make_new_columns('R AN AGENTS DESFLURANE INSPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,'R AN AGENTS DESFLURANE INSPIRED_%',  4, 5))
+    make_new_columns('R AN AGENTS DESFLURANE INSPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,'R AN AGENTS DESFLURANE INSPIRED_%',  4, 4))
 
     #(323, 'R FIO2_%')
     #print_allunique(flowsheet, 323)
@@ -929,25 +1037,25 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
 
     #(324, 'R AN AGENTS ISOFLURANE INSPIRED_%')
     #print_allunique(flowsheet, 324)
-    make_new_columns('R AN AGENTS ISOFLURANE INSPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN AGENTS ISOFLURANE INSPIRED_%',  4, 5))
+    make_new_columns('R AN AGENTS ISOFLURANE INSPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN AGENTS ISOFLURANE INSPIRED_%',  4, 4))
 
     #(325, 'R AN INSPIRED N2O_%')
     #print_allunique(flowsheet, 325)
-    make_new_columns('R AN INSPIRED N2O_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN INSPIRED N2O_%',  4, 5))
+    make_new_columns('R AN INSPIRED N2O_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN INSPIRED N2O_%',  4, 4))
 
     #(326, 'R AN INSPIRED NO2_ppm')
     #print_allunique(flowsheet, 326)
-    make_new_columns('R AN INSPIRED NO2_ppm', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN INSPIRED NO2_ppm',  4, 5))
+    make_new_columns('R AN INSPIRED NO2_ppm', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN INSPIRED NO2_ppm',  4, 4))
 
     #(327, 'R AN AGENTS NITRIC OXIDE_ppm')
     #print_allunique(flowsheet, 327)
-    make_new_columns('R AN AGENTS NITRIC OXIDE_ppm', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN AGENTS NITRIC OXIDE_ppm',  4, 5))
+    make_new_columns('R AN AGENTS NITRIC OXIDE_ppm', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN AGENTS NITRIC OXIDE_ppm',  4, 4))
 
     #(328, 'R INSPIRED NO SETTING')
     #(329, 'R AN INSPIRED O2 SETTING')
     #(330, 'R AN AGENTS SEVOFLURANE INSPIRED_%')
     #print_allunique(flowsheet, 330)
-    make_new_columns('R AN AGENTS SEVOFLURANE INSPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN AGENTS SEVOFLURANE INSPIRED_%',  4, 5))
+    make_new_columns('R AN AGENTS SEVOFLURANE INSPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN AGENTS SEVOFLURANE INSPIRED_%',  4, 4))
 
     #(331, 'R GOSH IP INSPIRED TIDAL VOLUME_mL')
     #(333, 'R GOSH IPAP')
@@ -1065,6 +1173,11 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
     #print_allunique(flowsheet, 497)
     make_new_columns('R AN VENT PEEP_cm H20', flowsheet, ['PEEP'], True)
 
+    
+    
+    #Now use some columns to update others
+    make_new_columns('ETCO2', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'ETCO2',  4, 4))
+    make_new_columns('HFO', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'HFO',  4, 4))
 
 
     #Some weight corrected values
@@ -1082,6 +1195,7 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
     fill_missing('Tracheostomy', flowsheet, 'Tracheostomy_missing')
     fill_missing('Ventilation(ml)', flowsheet, 'Ventilation(ml)_missing')
     fill_missing('MeanAirwayPressure', flowsheet, 'MeanAirwayPressure_missing')
+    fill_missing('ETCO2', flowsheet, 'ETCO2_missing')
 
     #Now do interpolation
     interpolate_cols('Ventilation', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
@@ -1094,6 +1208,7 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
     interpolate_cols('Tracheostomy', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
     interpolate_cols('Ventilation(ml)', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
     interpolate_cols('MeanAirwayPressure', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+    interpolate_cols('ETCO2', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
 
     flowsheet.to_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ventilation_interpolated.csv')
 else:
@@ -1222,29 +1337,33 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     #(142, 'R DEVICE CVP MEAN_mmHg')
     ##print_allunique(flowsheet, 142)
 
+
+    ##### Now fix the problem with MAP
+    #Pull out where MAP is a **/** format
+    slash = re.compile('.*/+.*')
+    strings = [i for i, j in enumerate(flowsheet['MAP']) if not slash.match(str(j)) == None]
+    strings = np.array(strings)
+
+    #Find the location where sysbp and diabp are missing but map not
+    diaNAs = np.where(flowsheet['DiaBP'].isna())
+    sysNAs = np.where(flowsheet['SysBP'].isna())
+    BP_NAs = np.union1d(diaNAs, sysNAs)
+    MAPnotBP = np.intersect1d(BP_NAs, strings)
+    #Can see actually none here that are relevant
+
+    #Now just fix the problem for the MAPs that are strings
+    newBPs = flowsheet.loc[strings, 'MAP'].str.split("/", n = 1, expand = True)
+    newBPs = newBPs.astype('float')
+    flowsheet.loc[strings, 'MAP'] = newBPs.loc[:, 0]*(1/3) + newBPs.loc[:, 1]*(2/3)
+
+    #Fill in where missing 
     fill_missing('SysBP', flowsheet, 'SysBP_missing')
     fill_missing('DiaBP', flowsheet, 'DiaBP_missing')
     fill_missing('MAP', flowsheet, 'MAP_missing')
 
-    #Possibly need a better solution for zero fill here? maybe expected normal for age?
-    def fill_median_BP(column, sheet):
-        """Function to fill in median values where BP missing despite interpolation
-        Not finished
-        """
-
-        column = return_colname(column, sheet)
-        ages = np.array([0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 15, 25])
-        SysBP_medians = np.array([])
-        switcher = {}
-        
-
-    interpolate_cols('SysBP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
-    interpolate_cols('DiaBP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
-    interpolate_cols('MAP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
-
-
-
-
+    interpolate_cols('SysBP', flowsheet, 'linear', 'SBP', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
+    interpolate_cols('DiaBP', flowsheet, 'linear', 'DBP', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
+    interpolate_cols('MAP', flowsheet, 'linear', 'MAP', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
 
 
     #### Now do HR
@@ -1262,7 +1381,7 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     fill_missing('HR', flowsheet, 'HR_missing')
 
     #Should probably do something as above with median HR
-    interpolate_cols('HR', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+    interpolate_cols('HR', flowsheet, 'linear', 'HR', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
 
     #GCS/ AVPU
     print_all(flowsheet)
@@ -1505,8 +1624,30 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     Bottom dose of milrinone is 30/mcg/kg/hr, of norad is 20/ng/kg/min or 1.2mcg/kg/hr
     Therefore milrinone to norad conversion would be 1.2/30 or 1/25
     """
-    flowsheet['Inotropes'] = 0
-    sum_inout('R GOSH ADRENALINE HOURLY VOLUME_mL', flowsheet, 'Inotropes')
+    ## Make changes to adrenaline according to locations of timings (some doses 1:10000, some 1:1000)
+    flowsheet['Adj_adrenaline'] = flowsheet['R GOSH ADRENALINE HOURLY VOLUME_mL']
+
+    #Get locations where lower dose adrenaline given
+    adrenaline_lowdose = re.compile('(ADRENALINE).*(\(1:10,000\)).*')
+    adrenaline_locs = [i for i, j in enumerate(medications['drug_name']) if adrenaline_lowdose.match(j) != None]
+
+    #Work through this list and then change all the matched ones in flowsheet
+    for i in adrenaline_locs:
+        #Pull patient and time
+        patient = medications.loc[i, 'project_id']
+        start_time = medications.loc[i, 'start_datetime']
+        end_time = medications.loc[i, 'end_datetime']
+
+        #Find locations in flowsheet that match patient and time
+        patient_matches = flowsheet['project_id'] == patient
+        time_matches = (start_time <= flowsheet['taken_datetime']) & (flowsheet['taken_datetime'] <= end_time)
+        true_matches = patient_matches & time_matches
+
+        #Now adjust
+        flowsheet.loc[true_matches, 'Adj_adrenaline'] /= 10
+        
+
+    sum_inout('Adj_adrenaline', flowsheet, 'Inotropes')
     sum_inout('R GOSH NORADRENALINE HOURLY VOLUME_mL', flowsheet, 'Inotropes')
 
     def corAVP(input):
@@ -1515,15 +1656,18 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     sum_inout('EquivAVP', flowsheet, 'Inotropes')
 
     def corDopamine(input):
-        return input/100
+        #Dopamine given at 40mg/ml
+        return (input/100)*40
     conv_column('R DOPAMINE VOLUME_mL', flowsheet, 'EquivDopamine', corDopamine)
     sum_inout('EquivDopamine', flowsheet, 'Inotropes')
 
     #Can consider changing this to be /10 as that is what Michael has done
     def corMilrinone(input):
-        return input/25
+        return input/10
     conv_column('R GOSH MILRINONE HOURLY VOLUME_mL', flowsheet, 'EquivMilrinone', corMilrinone)
     sum_inout('EquivMilrinone', flowsheet, 'Inotropes')
+
+    #Add in phenylephrine
 
     def aoverb(a, b):
         return a/b
@@ -1555,7 +1699,7 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     fill_missing('RR', flowsheet, 'RR_missing')
 
     #Need to do something about normals here too
-    interpolate_cols('RR', flowsheet, 'linear', how_far = 60, limit_direction = 'forward', fill = 15)
+    interpolate_cols('RR', flowsheet, 'linear', 'RR', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
     print('Saving interpolated columns')
     flowsheet.to_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_nearly_interpolated.csv')
 else:
