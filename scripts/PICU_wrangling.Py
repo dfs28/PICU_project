@@ -934,8 +934,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpola
     #Calculate strong ion gap
     Ca_charge = (flowsheet['Ca2+'] * 4.008) - (flowsheet['Albumin']/10 + 4) * 0.2495 * (-0.2 * (flowsheet['pH'] - 7.4) + 0.46) * 2 
     SID_calc = flowsheet['Na+'] + flowsheet['K+'] + (Ca_charge + 2.0266 * flowsheet['Mg']) - flowsheet['Cl'] - flowsheet['Lactate']
-    SID_effective = 17.6 * flowsheet['PaCO2'] * (7.59 / 10 ^ (-flowsheet['pH'])) + (flowsheet['Albumin'] * (0.123 * flowsheet['pH'] - 0.631)) +
-                    flowsheet['Phos'] * (0.309 * flowsheet['pH'] - 0.469)
+    SID_effective = 17.6 * flowsheet['PaCO2'] * (7.59 / (10 ** (flowsheet['pH'] * -1))) + (flowsheet['Albumin'] * (0.123 * flowsheet['pH'] - 0.631)) + flowsheet['Phos'] * (0.309 * flowsheet['pH'] - 0.469)
     SIG = SID_calc - SID_effective
     flowsheet['Strong_ion_gap'] = SIG
 
