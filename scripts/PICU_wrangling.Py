@@ -688,200 +688,206 @@ def remove_punct(column, new_column, sheet, punct_query):
 ### Add in lab components
 
 
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv') == False):
 
+    ## Now merge lab component columns into new cols
+    #ALT
+    make_new_columns('ALT_Alanine Transaminase (ALT)_U/L', labs, ['ALT'], True)
 
-## Now merge lab component columns into new cols
-#ALT
-make_new_columns('ALT_Alanine Transaminase (ALT)_U/L', labs, ['ALT'], True)
+    #Albumin
+    remove_punct('ALB_Albumin_g/L', 'Albumin', labs, '(>|<)(.+)')
+    make_new_columns('ALP_Alkaline Phosphatase (ALP)_U/L', labs, ['AlkPhos'], True)
 
-#Albumin
-remove_punct('ALB_Albumin_g/L', 'Albumin', labs, '(>|<)(.+)')
-make_new_columns('ALP_Alkaline Phosphatase (ALP)_U/L', labs, ['AlkPhos'], True)
+    #AST
+    make_new_columns('AST_Aspartate Transaminase (AST)_U/L', labs, ['AST'], True)
 
-#AST
-make_new_columns('AST_Aspartate Transaminase (AST)_U/L', labs, ['AST'], True)
+    #Aspartate
+    make_new_columns('ASP_Aspartate_umol/L', labs, ['Aspartate'], True)
 
-#Aspartate
-make_new_columns('ASP_Aspartate_umol/L', labs, ['Aspartate'], True)
+    #Amylase
+    make_new_columns('AMY_Amylase_U/L', labs, ['Amylase'], True)
 
-#Amylase
-make_new_columns('AMY_Amylase_U/L', labs, ['Amylase'], True)
+    #APTT
+    make_new_columns('APTT_APTT_Seconds', labs, ['APTT'], True)
+    make_new_columns('APTT_APTT_sec', labs, ['APTT'], True)
 
-#APTT
-make_new_columns('APTT_APTT_Seconds', labs, ['APTT'], True)
-make_new_columns('APTT_APTT_sec', labs, ['APTT'], True)
+    #AG
+    make_new_columns('POCGAP_Anion Gap POC_mmol/L', labs, ['Anion_gap'], True)
 
-#AG
-make_new_columns('POCGAP_Anion Gap POC_mmol/L', labs, ['Anion_gap'], True)
+    #BE
+    remove_punct('POCBEIM_BE (M) POC_mmol/L', 'Base_excess', labs, '(>|<)(.+)')
+    make_new_columns('POCBASEEXC_Base Excess POC_mmol/L', labs, ['Base_excess'], True)
 
-#BE
-remove_punct('POCBEIM_BE (M) POC_mmol/L', 'Base_excess', labs, '(>|<)(.+)')
-make_new_columns('POCBASEEXC_Base Excess POC_mmol/L', labs, ['Base_excess'], True)
+    #Basophils
+    make_new_columns('BASOPHILS_Basophil_x10*9/L', labs, ['Basophils'], True)
+    make_new_columns('BASOS1_Basophils_x10*9/L', labs, ['Basophils'], True)
 
-#Basophils
-make_new_columns('BASOPHILS_Basophil_x10*9/L', labs, ['Basophils'], True)
-make_new_columns('BASOS1_Basophils_x10*9/L', labs, ['Basophils'], True)
+    #Bicarb
+    make_new_columns('POCBICARBI_Bicarb (M) POC_mmol/L', labs, ['Bicarb'], True)
 
-#Bicarb
-make_new_columns('POCBICARBI_Bicarb (M) POC_mmol/L', labs, ['Bicarb'], True)
+    #pH
+    make_new_columns('PH_Blood pH', labs, ['pH'], True)
+    make_new_columns('POCPHC_pH (C) POC_pH', labs, ['pH'], True)
+    make_new_columns('POCPHISTATM_pH (M) POC_pH', labs, ['pH'], True)
+    remove_punct('POCPHT_PH (T) POC_pH', 'pH', labs, '(>|<)(.+)')
+    remove_punct('POCPH_pH POC_pH', 'pH', labs, '(>|<)(.+)')
 
-#pH
-make_new_columns('PH_Blood pH', labs, ['pH'], True)
-make_new_columns('POCPHC_pH (C) POC_pH', labs, ['pH'], True)
-make_new_columns('POCPHISTATM_pH (M) POC_pH', labs, ['pH'], True)
-remove_punct('POCPHT_PH (T) POC_pH', 'pH', labs, '(>|<)(.+)')
-remove_punct('POCPH_pH POC_pH', 'pH', labs, '(>|<)(.+)')
+    #Blood cultures
+    blood_culture = [['No growth', 'No growth at 48 hours - incubation and continuous monitoring is ongoing'], ['Positive']]
+    make_new_columns('BOTRESANO2_Bottle Result Anaerobic', labs, ['Blood_culture'], newcols1 = blood_culture)
+    make_new_columns('BOTRESO2_Bottle Result Aerobic', labs, ['Blood_culture'], newcols1 = blood_culture)
 
-#Blood cultures
-blood_culture = [['No growth', 'No growth at 48 hours - incubation and continuous monitoring is ongoing'], ['Positive']]
-make_new_columns('BOTRESANO2_Bottle Result Anaerobic', labs, ['Blood_culture'], newcols1 = blood_culture)
-make_new_columns('BOTRESO2_Bottle Result Aerobic', labs, ['Blood_culture'], newcols1 = blood_culture)
+    #CRP
+    remove_punct('CRP_C-reactive Protein (CRP)_mg/L', 'CRP', labs, '(>|<)(.+)')
 
-#CRP
-remove_punct('CRP_C-reactive Protein (CRP)_mg/L', 'CRP', labs, '(>|<)(.+)')
+    #Calcium - need to convert the POC potassium = have just scaled it to the ref ranges
+    make_new_columns('CA_Calcium_mmol/L', labs, ['Ca2+'], True)
+    def conv_Ca(a):
+        return (a - 1)*(5/3) + 2.2
 
-#Calcium - need to convert the POC potassium = have just scaled it to the ref ranges
-make_new_columns('CA_Calcium_mmol/L', labs, ['Ca2+'], True)
-def conv_Ca(a):
-    return (a - 1)*(5/3) + 2.2
+    conv_column('POCCALCIUM_Calcium POC_mmol/L', sheet, 'Ca2+', conv_Ca)
+    conv_column('POCCALI_Calcium POC_mmol/L', sheet, 'Ca2+', conv_Ca)
 
-conv_column('POCCALCIUM_Calcium POC_mmol/L', sheet, 'Ca2+', conv_Ca)
-conv_column('POCCALI_Calcium POC_mmol/L', sheet, 'Ca2+', conv_Ca)
+    #Cl
+    make_new_columns('CL_Chloride_mmol/L', labs, ['Cl'], True)
+    make_new_columns('POCCL_Chloride POC_mmol/L', labs, ['Cl'], True)
 
-#Cl
-make_new_columns('CL_Chloride_mmol/L', labs, ['Cl'], True)
-make_new_columns('POCCL_Chloride POC_mmol/L', labs, ['Cl'], True)
+    #Cr
+    remove_punct('CREAT_Creatinine_umol/L', 'CRP', labs, '(>|<)(.+)')
 
-#Cr
-remove_punct('CREAT_Creatinine_umol/L', 'CRP', labs, '(>|<)(.+)')
+    #Hb
+    make_new_columns('POCCTHB_ctHb POC_g/L', labs, ['Hb'], True)
+    make_new_columns('HB1_Hb_g/L', labs, ['Hb'], True)
 
-#Hb
-make_new_columns('POCCTHB_ctHb POC_g/L', labs, ['Hb'], True)
-make_new_columns('HB1_Hb_g/L', labs, ['Hb'], True)
+    #Eos
+    make_new_columns('EOSINO_Eosinophil_x10*9/L', labs, ['Eosinophils'], True)
+    make_new_columns('EOS1_Eosinophils_x10*9/L', labs, ['Eosinophils'], True)
 
-#Eos
-make_new_columns('EOSINO_Eosinophil_x10*9/L', labs, ['Eosinophils'], True)
-make_new_columns('EOS1_Eosinophils_x10*9/L', labs, ['Eosinophils'], True)
+    #Fibrinogen
+    remove_punct('FIB_Fibrinogen_g/L', 'Fibrinogen', labs, '(>|<)(.+)')
 
-#Fibrinogen
-remove_punct('FIB_Fibrinogen_g/L', 'Fibrinogen', labs, '(>|<)(.+)')
+    #FHHb, FMetHb, FO2Hb
+    make_new_columns('POCFHHB_FHHb POC_%', labs, ['FHHb'], True)
+    make_new_columns('POCFMETHB_FMetHb POC_%', labs, ['FMetHb'], True)
+    make_new_columns('POCFO2HB_FO2HB POC_%', labs, ['FO2Hb'], True)
 
-#FHHb, FMetHb, FO2Hb
-make_new_columns('POCFHHB_FHHb POC_%', labs, ['FHHb'], True)
-make_new_columns('POCFMETHB_FMetHb POC_%', labs, ['FMetHb'], True)
-make_new_columns('POCFO2HB_FO2HB POC_%', labs, ['FO2Hb'], True)
+    #Glucose
+    make_new_columns('GLU_Glucose_mmol/L', labs, ['Glucose'], True)
+    make_new_columns('POCGLUCOSE_Glucose POC_mmol/L', labs, ['Glucose'], True)
 
-#Glucose
-make_new_columns('GLU_Glucose_mmol/L', labs, ['Glucose'], True)
-make_new_columns('POCGLUCOSE_Glucose POC_mmol/L', labs, ['Glucose'], True)
+    #HCT
+    remove_punct('POCHCT_HCT POC_%', 'HCT%', labs, '(>|<)(.+)')
+    make_new_columns('HCT1_HCT_L/L', labs, ['HCT'], True)
 
-#HCT
-remove_punct('POCHCT_HCT POC_%', 'HCT%', labs, '(>|<)(.+)')
-make_new_columns('HCT1_HCT_L/L', labs, ['HCT'], True)
+    #INR
+    remove_punct('INR_INR', 'INR', labs, '(>|<)(.+)')
 
-#INR
-remove_punct('INR_INR', 'INR', labs, '(>|<)(.+)')
+    #Lactate
+    make_new_columns('LAC_Lactate_mmol/L', labs, ['Lactate'], True)
+    make_new_columns('LAC_Lactate_mmol/L', labs, ['Lactate'], True)
+    remove_punct('POCLAC_Lactate (art) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+    remove_punct('POCLAC_Lactate (cap) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+    remove_punct('POCLAC_Lactate (mv) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+    remove_punct('POCLAC_Lactate (ven) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+    remove_punct('POCLAC_Lactate POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+    make_new_columns('BLAC_Blood Lactate_mmol/L', labs, ['Lactate'], True)
 
-#Lactate
-make_new_columns('LAC_Lactate_mmol/L', labs, ['Lactate'], True)
-make_new_columns('LAC_Lactate_mmol/L', labs, ['Lactate'], True)
-remove_punct('POCLAC_Lactate (art) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
-remove_punct('POCLAC_Lactate (cap) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
-remove_punct('POCLAC_Lactate (mv) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
-remove_punct('POCLAC_Lactate (ven) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
-remove_punct('POCLAC_Lactate POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
-make_new_columns('BLAC_Blood Lactate_mmol/L', labs, ['Lactate'], True)
+    #Lymphs
+    make_new_columns('LYMPHS1_Lymphocyte_x10*9/L', labs, ['Lymphs'], True)
+    make_new_columns('LYMPH_Lymphocyte_x10*9/L', labs, ['Lymphs'], True)
+    make_new_columns('LYMPCNT_Lymphocyte Count_x10*9/L', labs, ['Lymphs'], True)
 
-#Lymphs
-make_new_columns('LYMPHS1_Lymphocyte_x10*9/L', labs, ['Lymphs'], True)
-make_new_columns('LYMPH_Lymphocyte_x10*9/L', labs, ['Lymphs'], True)
-make_new_columns('LYMPCNT_Lymphocyte Count_x10*9/L', labs, ['Lymphs'], True)
+    #Mg
+    make_new_columns('MG_Magnesium_mmol/L', labs, ['Mg'], True)
 
-#Mg
-make_new_columns('MG_Magnesium_mmol/L', labs, ['Mg'], True)
+    #Monocytes
+    make_new_columns('MONOS1_Monocyte_x10*9/L', labs, ['Monocytes'], True)
+    make_new_columns('MONOCYTES_Monocytes_x10*9/L', labs, ['Monocytes'], True)
 
-#Monocytes
-make_new_columns('MONOS1_Monocyte_x10*9/L', labs, ['Monocytes'], True)
-make_new_columns('MONOCYTES_Monocytes_x10*9/L', labs, ['Monocytes'], True)
+    #Neuts
+    make_new_columns('NEUTS1_Neutrophils_x10*9/L', labs, ['Neuts'], True)
+    make_new_columns('NEUTSABS_Neutrophils_x10*9/L', labs, ['Neuts'], True)
 
-#Neuts
-make_new_columns('NEUTS1_Neutrophils_x10*9/L', labs, ['Neuts'], True)
-make_new_columns('NEUTSABS_Neutrophils_x10*9/L', labs, ['Neuts'], True)
+    #Various POC blood gas values
+    make_new_columns('POCP50_p50 POC_kPa', labs, ['P50'], True)
+    make_new_columns('POCPCO2_paCO2 POC_kPa', labs, ['PaCO2'], True)
+    make_new_columns('POCPCO2_pcCO2 POC_kPa', labs, ['PcCO2'], True)
+    make_new_columns('POCPCO2IC_pCO2 (C) POC_kPa', labs, ['PcCO2'], True)
+    make_new_columns('POCPPCO2IM_pCO2 (M) POC_kPa', labs, ['PmCO2'], True)
+    remove_punct('POCPO2_paO2 POC_kPa', 'PaO2', labs, '(>|<)(.+)')
+    remove_punct('POCPO2_pcO2 POC_kPa', 'PcO2', labs, '(>|<)(.+)')
+    make_new_columns('POCPCO2_pmvCO2 POC_kPa', labs, ['PvCO2'], True)
+    make_new_columns('POCPO2_pmvO2 POC_kPa', labs, ['PvO2'], True)
+    make_new_columns('POCPP02IM_pO2 (M) POC_kPa', labs, ['PmO2'], True)
+    make_new_columns('POCPO2IC_pO2 (C) POC_kPa', labs, ['PcO2'], True)
+    make_new_columns('POCPP02IM_pO2 (M) POC_kPa', labs, ['PmO2'], True)
+    make_new_columns('POCPP02IM_pO2 (M) POC_kPa', labs, ['PmO2'], True)
+    remove_punct('POCPO2_pO2 POC_kPa', 'PO2', labs, '(>|<)(.+)')
+    remove_punct('POCPCO2_pvCO2 POC_kPa', 'PvCO2', labs, '(>|<)(.+)')
+    remove_punct('POCPO2_pvO2 POC_kPa', 'PvO2', labs, '(>|<)(.+)')
 
-#Various POC blood gas values
-make_new_columns('POCP50_p50 POC_kPa', labs, ['P50'], True)
-make_new_columns('POCPCO2_paCO2 POC_kPa', labs, ['PaCO2'], True)
-make_new_columns('POCPCO2_pcCO2 POC_kPa', labs, ['PcCO2'], True)
-make_new_columns('POCPCO2IC_pCO2 (C) POC_kPa', labs, ['PcCO2'], True)
-make_new_columns('POCPPCO2IM_pCO2 (M) POC_kPa', labs, ['PmCO2'], True)
-remove_punct('POCPO2_paO2 POC_kPa', 'PaO2', labs, '(>|<)(.+)')
-remove_punct('POCPO2_pcO2 POC_kPa', 'PcO2', labs, '(>|<)(.+)')
-make_new_columns('POCPCO2_pmvCO2 POC_kPa', labs, ['PvCO2'], True)
-make_new_columns('POCPO2_pmvO2 POC_kPa', labs, ['PvO2'], True)
-make_new_columns('POCPP02IM_pO2 (M) POC_kPa', labs, ['PmO2'], True)
-make_new_columns('POCPO2IC_pO2 (C) POC_kPa', labs, ['PcO2'], True)
-make_new_columns('POCPP02IM_pO2 (M) POC_kPa', labs, ['PmO2'], True)
-make_new_columns('POCPP02IM_pO2 (M) POC_kPa', labs, ['PmO2'], True)
-remove_punct('POCPO2_pO2 POC_kPa', 'PO2', labs, '(>|<)(.+)')
-remove_punct('POCPCO2_pvCO2 POC_kPa', 'PvCO2', labs, '(>|<)(.+)')
-remove_punct('POCPO2_pvO2 POC_kPa', 'PvO2', labs, '(>|<)(.+)')
+    #Phos
+    make_new_columns('PO5_Phosphate_mmol/L', labs, ['Phos'], True)
+    make_new_columns('PLT1_Platelet Count_x10*9/L', labs, ['Plts'], True)
 
-#Phos
-make_new_columns('PO5_Phosphate_mmol/L', labs, ['Phos'], True)
-make_new_columns('PLT1_Platelet Count_x10*9/L', labs, ['Plts'], True)
+    #Potassium
+    remove_punct('K1_Potassium_mmol/L', 'K+', labs, '(>|<)(.+)')
+    remove_punct('POCPOTASSIU_Potassium (art) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+    remove_punct('POCPOTASSIU_Potassium (cap) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+    remove_punct('POCPOTASSIU_Potassium (mv) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+    remove_punct('POCPOTASSIU_Potassium (ven) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+    remove_punct('POCPOTASSIU_Potassium POC_mmol/L', 'K+', labs, '(>|<)(.+)')
 
-#Potassium
-remove_punct('K1_Potassium_mmol/L', 'K+', labs, '(>|<)(.+)')
-remove_punct('POCPOTASSIU_Potassium (art) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
-remove_punct('POCPOTASSIU_Potassium (cap) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
-remove_punct('POCPOTASSIU_Potassium (mv) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
-remove_punct('POCPOTASSIU_Potassium (ven) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
-remove_punct('POCPOTASSIU_Potassium POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+    #PT
+    remove_punct('PT_Prothrombin Time_sec', 'PT', labs, '(>|<)(.+)')
+    remove_punct('PT_Prothrombin Time_Seconds', 'PT', labs, '(>|<)(.+)')
 
-#PT
-remove_punct('PT_Prothrombin Time_sec', 'PT', labs, '(>|<)(.+)')
-remove_punct('PT_Prothrombin Time_Seconds', 'PT', labs, '(>|<)(.+)')
+    #Retics
+    remove_punct('RETIC_Reticulocyte (Retic) count_x10*9/L', 'Retics', labs, '(>|<)(.+)')
+    remove_punct('RETIC_Reticulocyte (Retic) count_10*9/L', 'Retics', labs, '(>|<)(.+)')
 
-#Retics
-remove_punct('RETIC_Reticulocyte (Retic) count_x10*9/L', 'Retics', labs, '(>|<)(.+)')
-remove_punct('RETIC_Reticulocyte (Retic) count_10*9/L', 'Retics', labs, '(>|<)(.+)')
+    #RBC
+    remove_punct('BFRBC_Red Blood Cell Count_x 10*6 /litre', 'RBC', labs, '(>|<)(.+)')
 
-#RBC
-remove_punct('BFRBC_Red Blood Cell Count_x 10*6 /litre', 'RBC', labs, '(>|<)(.+)')
+    #Na
+    remove_punct('NA1_Sodium_mmol/L', 'Na+', labs, '(>|<)(.+)')
+    remove_punct('POCSODIUM_Sodium POC_mmol/L', 'Na+', labs, '(>|<)(.+)')
+    remove_punct('POCNAISTAT_Sodium POC_mmol/L', 'Na+', labs, '(>|<)(.+)')
 
-#Na
-remove_punct('NA1_Sodium_mmol/L', 'Na+', labs, '(>|<)(.+)')
-remove_punct('POCSODIUM_Sodium POC_mmol/L', 'Na+', labs, '(>|<)(.+)')
-remove_punct('POCNAISTAT_Sodium POC_mmol/L', 'Na+', labs, '(>|<)(.+)')
+    #TT
+    remove_punct('TT_Thrombin Time_sec', 'TT', labs, '(>|<)(.+)')
+    remove_punct('TT_Thrombin Time_Seconds', 'TT', labs, '(>|<)(.+)')
 
-#TT
-remove_punct('TT_Thrombin Time_sec', 'TT', labs, '(>|<)(.+)')
-remove_punct('TT_Thrombin Time_Seconds', 'TT', labs, '(>|<)(.+)')
+    #Bili
+    remove_punct('TBIL_Total bilirubin_umol/L', 'Bili', labs, '(>|<)(.+)')
+    remove_punct('CALBILI_Total bilirubin (BU + BC)_umol/L', 'Bili', labs, '(>|<)(.+)')
+    remove_punct('POCBILIRUBIN_Total Bilirubin POC_µmol/L', 'Bili', labs, '(>|<)(.+)')
 
-#Bili
-remove_punct('TBIL_Total bilirubin_umol/L', 'Bili', labs, '(>|<)(.+)')
-remove_punct('CALBILI_Total bilirubin (BU + BC)_umol/L', 'Bili', labs, '(>|<)(.+)')
-remove_punct('POCBILIRUBIN_Total Bilirubin POC_µmol/L', 'Bili', labs, '(>|<)(.+)')
+    #WCC
+    remove_punct('BFWBC_White Blood Cell Count_x 10*6 /litre', 'WCC', labs, '(>|<)(.+)')
+    remove_punct('WBC1_WBC_x10*9/L', 'WCC', labs, '(>|<)(.+)')
+    remove_punct('WBCAUTOSYNC_White Blood Cells_x10*9/L', 'WCC', labs, '(>|<)(.+)')
+    remove_punct('WCC_White Cell Count_x10*9/L', 'WCC', labs, '(>|<)(.+)')
+    remove_punct('OFWBC_White Cell Count_x10*9/L', 'WCC', labs, '(>|<)(.+)')
 
-#WCC
-remove_punct('BFWBC_White Blood Cell Count_x 10*6 /litre', 'WCC', labs, '(>|<)(.+)')
-remove_punct('WBC1_WBC_x10*9/L', 'WCC', labs, '(>|<)(.+)')
-remove_punct('WBCAUTOSYNC_White Blood Cells_x10*9/L', 'WCC', labs, '(>|<)(.+)')
-remove_punct('WCC_White Cell Count_x10*9/L', 'WCC', labs, '(>|<)(.+)')
-remove_punct('OFWBC_White Cell Count_x10*9/L', 'WCC', labs, '(>|<)(.+)')
+    #Now only merge the columns we have just made
+    lab_cols = ['project_id', 'collected_datetime', 'ALT', 'Albumin', 'AlkPhos', 'AST', 'Aspartate', 
+            'Amylase', 'APTT', 'Anion_gap', 'Base_excess', 'Basophils', 
+            'Bicarb', 'pH', 'Blood_culture', 'CRP', 'Ca2+', 'Cl', 'Eosinophils', 
+            'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT%', 'HCT', 'INR', 
+            'Lactate', 'Lymphs', 'Mg', 'Monocytes', 'Neuts', 'P50', 'PaCO2', 
+            'PcCO2', 'PmCO2', 'PaO2', 'PcO2', 'PmO2', 'PO2', 'PvCO2', 
+            'PcO2', 'Phos', 'Plts', 'K+', 'PT', 'Retics', 'Na+', 'TT', 'Bili', 'WCC']
 
-#Now only merge the columns we have just made
-lab_cols = ['project_id', 'collected_datetime', 'ALT', 'Albumin', 'AlkPhos', 'AST', 'Aspartate', 
-        'Amylase', 'APTT', 'Anion_gap', 'Base_excess', 'Basophils', 
-        'Bicarb', 'pH', 'Blood_culture', 'CRP', 'Ca2+', 'Cl', 'Eosinophils', 
-        'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT%', 'HCT', 'INR', 
-        'Lactate', 'Lymphs', 'Mg', 'Monocytes', 'Neuts', 'P50', 'PaCO2', 
-        'PcCO2', 'PmCO2', 'PaO2', 'PcO2', 'PmO2', 'PO2', 'PvCO2', 
-        'PcO2', 'Phos', 'Plts', 'K+', 'PT', 'Retics', 'Na+', 'TT', 'Bili', 'WCC']
+    flowsheet = pd.merge(flowsheet, labs.loc[:, lab_cols], how = 'outer', left_on = ['project_id', 'taken_datetime'], right_on = ['project_id', 'collected_datetime'])
+    print('Flowsheet merged')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv')
+    print('Flowsheet with labs saved')
+else:
+    print('Flowsheet with labs already produced')
 
-flowsheet = pd.merge(flowsheet, labs.loc[:, lab_cols], how = 'outer', left_on = ['project_id', 'taken_datetime'], right_on = ['project_id', 'collected_datetime'])
-
-if (os.path.exists('/local/data/public/2020/dfs28/PICU_data/flowsheet_all_times.csv') == False):
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv') == False):
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv', parse_dates = ['taken_datetime'])
 
     #### Now enforce a minute by minute time frame
     #Frames for start and end dates
@@ -908,15 +914,18 @@ if (os.path.exists('/local/data/public/2020/dfs28/PICU_data/flowsheet_all_times.
         times_df = pd.DataFrame({'taken_datetime': times, 'project_id': patient})
         all_times = all_times.append(times_df)
 
+    print('Adding all times')
     flowsheet = all_times.merge(flowsheet, how = 'outer', on = ['taken_datetime', 'project_id'])
-    flowsheet.to_csv('/local/data/public/2020/dfs28/PICU_data/flowsheet_all_times.csv')
+    print('Saving all times')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv')
+    print('Times saved')
 else:
     print('Times already added')
 #### Now do some feature engineering
 
 
-if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ventilation_interpolated.csv') == False):
-    flowsheet = pd.read_csv('/local/data/public/2020/dfs28/PICU_data/flowsheet_all_times.csv', parse_dates = ['taken_datetime'])
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv') == False):
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv', parse_dates = ['taken_datetime'])
 
     #Interpolate labs maximum 4 days
     for i in lab_cols[2:-1]:
@@ -1266,7 +1275,7 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
     interpolate_cols('MeanAirwayPressure', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
     interpolate_cols('ETCO2', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
 
-    flowsheet.to_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ventilation_interpolated.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv')
 else:
     print('Ventilation already interpolated')
 
@@ -1282,8 +1291,8 @@ calculate this from the SBP and DBP columns - should possibly change the functio
 a MAP/ have the function calls not to produce MAP
 """
 
-if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_nearly_interpolated.csv') == False):
-    flowsheet = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ventilation_interpolated.csv', parse_dates = ['taken_datetime'])
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv') == False):
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv', parse_dates = ['taken_datetime'])
 
     #Make a unified BP column
     #4, 'R AN ARTERIAL BLOOD PRESSURE'
@@ -1706,14 +1715,14 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     #Need to do something about normals here too
     interpolate_cols('RR', flowsheet, 'linear', 'RR', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
     print('Saving interpolated columns')
-    flowsheet.to_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_nearly_interpolated.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv')
 else:
     print('Interpolation already nearly done')
 
 ### Get demographics
 if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv') == False:
     print('Reading in flowsheet')
-    flowsheet = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_nearly_interpolated.csv', parse_dates = ['taken_datetime'])
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv', parse_dates = ['taken_datetime'])
 
     print('Applying demographics')
     apply_demographic('birth_date', demographics, flowsheet, 'Age_yrs')
@@ -1800,7 +1809,8 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.c
                         flowsheet['R GOSH PEWS HR SCORE']
 
 
-
+print('Output now with PEWS')
+flowsheet_output.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv')
 
     #Now PIM score
     """ Probably come back to this?
