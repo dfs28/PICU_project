@@ -14,7 +14,8 @@ flowsheet = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/caboodl
 demographics = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/caboodle_patient_demographics.csv', sep = ',', parse_dates = ['birth_date', 'death_date'])
 medications = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/caboodle_patient_selected_medication_admins_main.csv', sep = ',', parse_dates = ['start_datetime', 'end_datetime'])
 labs = pd.read_csv('/store/DAMTP/dfs28/updated_files/caboodle_patient_selected_lab_components_main_pivot.csv', sep = ',', parse_dates = ['collected_datetime', 'received_datetime', 'verified_datetime'])
-stays = pd.read_csv('/store/DAMTP/dfs28/updated_files/caboodle_patient_episodes.csv', sep = ',', parse_dates = ['start_datetime', 'end_datetime'])
+stays = pd.read_csv('/store/DAMTP/dfs28/updated_files/caboodle_patient_ward_stays.csv', sep = ',', parse_dates = ['start_datetime', 'end_datetime'])
+episodes = pd.read_csv('/store/DAMTP/dfs28/updated_files/caboodle_patient_episodes.csv', sep = ',', parse_dates = ['start_datetime', 'end_datetime'])
 
 ##### Make a whole load of helper functions to help with cleaning
 
@@ -694,7 +695,7 @@ def remove_punct(column, new_column, sheet, punct_query):
 make_new_columns('ALT_Alanine Transaminase (ALT)_U/L', labs, ['ALT'], True)
 
 #Albumin
-make_new_columns('ALB_Albumin_g/L', labs, ['Albumin'], True)
+remove_punct('ALB_Albumin_g/L', 'Albumin', labs, '(>|<)(.+)')
 make_new_columns('ALP_Alkaline Phosphatase (ALP)_U/L', labs, ['AlkPhos'], True)
 
 #AST
@@ -826,7 +827,7 @@ remove_punct('POCPCO2_pvCO2 POC_kPa', 'PvCO2', labs, '(>|<)(.+)')
 remove_punct('POCPO2_pvO2 POC_kPa', 'PvO2', labs, '(>|<)(.+)')
 
 #Phos
-make_new_columns('PO5_Phosphate_mmol/L', labs, ['PO5'], True)
+make_new_columns('PO5_Phosphate_mmol/L', labs, ['Phos'], True)
 make_new_columns('PLT1_Platelet Count_x10*9/L', labs, ['Plts'], True)
 
 #Potassium
@@ -876,7 +877,7 @@ lab_cols = ['project_id', 'collected_datetime', 'ALT', 'Albumin', 'AlkPhos', 'AS
         'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT%', 'HCT', 'INR', 
         'Lactate', 'Lymphs', 'Mg', 'Monocytes', 'Neuts', 'P50', 'PaCO2', 
         'PcCO2', 'PmCO2', 'PaO2', 'PcO2', 'PmO2', 'PO2', 'PvCO2', 
-        'PcO2', 'PO5', 'Plts', 'K+', 'PT', 'Retics', 'Na+', 'TT', 'Bili', 'WCC']
+        'PcO2', 'Phos', 'Plts', 'K+', 'PT', 'Retics', 'Na+', 'TT', 'Bili', 'WCC']
 
 flowsheet = pd.merge(flowsheet, labs.loc[:, lab_cols], how = 'outer', left_on = ['project_id', 'taken_datetime'], right_on = ['project_id', 'collected_datetime'])
 
@@ -921,8 +922,13 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
     for i in lab_cols[2:-1]:
         interpolate_cols(i, flowsheet, 'pad', how_far = 5760, limit_direction = 'forward', fill = fill_median)
 
-    #Calculate strong ion gap?
-    SID_calc = flowsheet['Na+'] + flowsheet['K+'] + flowsheet['']
+    #Calculate strong ion gap
+    Ca_charge = (flowsheet['Ca2+'] * 4.008) - (flowsheet['Albumin']/10 + 4) * 0.2495 * (-0.2 * (flowsheet['pH'] - 7.4) + 0.46) * 2 
+    SID_calc = flowsheet['Na+'] + flowsheet['K+'] + (Ca_charge + 2.0266 * flowsheet['Mg']) - flowsheet['Cl'] - flowsheet['Lactate']
+    SID_effective = 17.6 * flowsheet['PaCO2'] * (7.59 / 10 ^ (-flowsheet['pH'])) + (flowsheet['Albumin'] * (0.123 * flowsheet['pH'] - 0.631)) +
+                    flowsheet['Phos'] * (0.309 * flowsheet['pH'] - 0.469)
+    SIG = SID_calc - SID_effective
+    flowsheet['Strong_ion_gap'] = SIG
 
     #Bodyweight
     print_all(flowsheet)
@@ -1772,7 +1778,7 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.c
     make_new_columns('TEMPERATURE', flowsheet, ['Temp'], True)
     make_new_columns('R AN TEMPERATURE (NON-SPECIFIC)', flowsheet, ['Temp'], True)
     fill_missing('Temp', flowsheet, 'Temp_missing')
-    interpolate_cols('Temp', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 98)
+    interpolate_cols('Temp', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = fill_median)
 
     ### Urine output
     make_new_columns('URINE OUTPUT_mL', flowsheet, ['Urine_output'], True)
@@ -1780,11 +1786,112 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.c
     fill_missing('Urine_output_kg', flowsheet, 'Urine_output_missing_kg')
     interpolate_cols('Urine_output_kg', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
 
-    ### Pull only patients which have enough data?
+    ## Do something with PEWS and PIM score
+    get_relevant_cols(flowsheet, 'PEWS')
+    
+    #Will have to come back to this, can use it just as PEWS in mean time
+    pews = ['R GOSH PEWS BP SCORE', 'R GOSH PEWS CRT SCORE', 'R GOSH PEWS HR SCORE', 'R GOSH PEWS RESP SCORE', 'R GOSH PEWS OX SCORE', 'R GOSH PEWS SPO2 SCORE', 'R GOSH PEWS WOB SCORE']
+    
+    #I think that most PEWS charts make you put zero if not available anyway - assume GCS basically not there because mostly NA
+    for i in pews:
+        interpolate_cols(i, flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
+    flowsheet['PEWS'] = flowsheet['R GOSH PEWS BP SCORE'] + flowsheet['R GOSH PEWS WOB SCORE'] + flowsheet['R GOSH PEWS SPO2 SCORE'] + 
+                        flowsheet['R GOSH PEWS RESP SCORE'] + flowsheet['R GOSH PEWS OX SCORE'] + flowsheet['R GOSH PEWS CRT SCORE'] +
+                        flowsheet['R GOSH PEWS HR SCORE']
 
+
+
+
+    #Now PIM score
+    """ Probably come back to this?
+    get_relevant_cols(flowsheet, 'PIM')
+    for i in unique_patients:
+    PIM2 val = (0.01395 * (absolute (SBP-120))) + (3.0791 * Pupils) + (0.2888 * (100 * FiO2/PaO2)) + 
+    (0.1040 * (absolute Base Excess)) + (1.3352 * MechVent) − (0.9282 * Elective) − (1.0244 * Recovery) + (0.7507 * Bypass) + (1.6829 * HRdiag) − (1.5770 * LRdiag) − 4.8841. 
+    Ref is downloaded Egyptian paper
+    The PIM2 risk of death = exp PIM2 val/(1 + expPIM2 val)
+    """
+
+""" Will have to come back to this - aim to run whole thing start to finish over weekend
+    #Now bin all bits that are not in the PICU admission - should preserve pre-existing bloods etc
+    #Frames for start and end dates
+    episode_times = pd.DataFrame([], columns = ['project_id', 'episode', 'start_dates', 'end_dates'])
+    new_dtypes = {"project_id": object, "episode": int, 'start_dates': 'datetime64', 'end_dates':'datetime64'}
+    episode_times = episode_times.astype(new_dtypes)
+    start_dates = pd.Series([], dtype = 'datetime64[ns]')
+    end_dates = pd.Series([], dtype = 'datetime64[ns]')
+
+    #Split up by episode
+    flowsheet['Episode'] = 0
+
+    #Fill them
+    PICU_rows = stays['ward_code'].isin(['PICU', 'NICU', 'CICU', 'OTTER RECOV', 'TURTL RECOV'])
+    gapped_pts = list()
+    for i in gapped_pts:
+        pt_locs = stays['project_id'] == i
+        stays.loc[pt_locs, :]
+
+        pt_loc2 = episodes['project_id'] == i
+        episodes.loc[pt_loc2, ['start_datetime', 'end_datetime', 'accom_local_code', 'accom_name', 'primary_diagnosis_name', 'primary_procedure_name']]
+
+
+    for i in unique_patients:
+        pt_locs = stays['project_id'] == i
+
+        #Get the rows which are PICU/NICU/CICU rows
+        PICU_pt_locs = PICU_rows & pt_locs
+        start_times = stays.loc[PICU_pt_locs, 'start_datetime']
+        end_times = stays.loc[PICU_pt_locs, 'end_datetime']
+
+        #Mark 2 different episodes if gap in stays
+        if len(start_times) > 1:
+            
+            #Get gaps by finding difference between beginnings and ends
+            middle_starts = start_times[1:]
+            middle_ends = end_times[:-1]
+            middle_ends.index = middle_starts.index
+            gaps = middle_starts - middle_ends
+            
+            #Only consider separate admissions as split by a day - could just be going elsewhere for a procedure
+            big_gaps = gaps > np.timedelta64(1, 'D')
+
+            #I noted issue with duplicate patients on different encounters - will need to fix
+
+            if any(big_gaps):
+                when_gap = np.where(big_gaps)
+                gapped_pts.append(i)
+                print(i, when_gap)
+
+                #Put the start and end of it on so can do before and after
+                start_gap_end = list([0])
+                start_gap_end.append([i for i in when_gap.ndenumerate()])
+                start_gap_end.append(int(len(big_gaps)))
+                
+                #Work through the gaps
+                for i in range(len(when_gap) + 1):
+                    
+
+        times = flowsheet.loc[locs, 'taken_datetime']
+        sorted_times = np.argsort(times)
+        start = sorted_times == min(sorted_times)
+        finish = sorted_times == max(sorted_times)
+        start_dates = start_dates.append(times[start])
+        end_dates = end_dates.append(times[finish])
+
+    #Now make a new series to merge to which contains all of the possible time points
+    all_times = pd.DataFrame(pd.Series([], dtype = 'datetime64[ns]'), columns =['taken_datetime'])
+    all_times = all_times.append(pd.DataFrame([], columns = ['project_id']))
+    for i in range(len(unique_patients)):
+        times = pd.date_range(start = start_dates[start_dates.index[i]], end = end_dates[end_dates.index[i]], freq = 'min')
+        patient = pd.Series([unique_patients[i]]*len(times))
+        times_df = pd.DataFrame({'taken_datetime': times, 'project_id': patient})
+        all_times = all_times.append(times_df)
 
     ### Save the data so that can run childsds in R
     flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_final_output.csv')
+
+### Now bin all data that isn't within the PICU admission time periods
+
 
 ### Now only print columns we are interested in
 cols = ['project_id', 'encounter_key', 'taken_datetime', 'R GOSH IP PCCMDS AIRWAY/VENTILATION', 'R GOSH PCCMDS ANALGESIA/SEDATION', 'R GOSH IP PCCMDS BASIC', 
@@ -1824,3 +1931,5 @@ flowsheet_output = pd.concat([flowsheet_keep, flowsheet_new], axis = 1)
 print('Saving output')
 flowsheet_output.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_output_touse.csv')
 print('Done!')
+
+"""
