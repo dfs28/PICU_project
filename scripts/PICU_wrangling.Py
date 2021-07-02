@@ -13,7 +13,8 @@ import re
 flowsheet = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/caboodle_patient_selected_flowsheetrows_main_pivot.csv', sep= ',', parse_dates=['taken_datetime'])
 demographics = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/caboodle_patient_demographics.csv', sep = ',', parse_dates = ['birth_date', 'death_date'])
 medications = pd.read_csv('/mhome/damtp/q/dfs28/Project/Project_data/files/caboodle_patient_selected_medication_admins_main.csv', sep = ',', parse_dates = ['start_datetime', 'end_datetime'])
-
+labs = pd.read_csv('/store/DAMTP/dfs28/updated_files/caboodle_patient_selected_lab_components_main_pivot.csv', sep = ',', parse_dates = ['collected_datetime', 'received_datetime', 'verified_datetime'])
+stays = pd.read_csv('/store/DAMTP/dfs28/updated_files/caboodle_patient_episodes.csv', sep = ',', parse_dates = ['start_datetime', 'end_datetime'])
 
 ##### Make a whole load of helper functions to help with cleaning
 
@@ -533,13 +534,12 @@ def apply_drugs(medication_sheet, flow_sheet, drug_name, new_col, conc, dose_con
 
     #Now correct for time
 
-    dose_hr = 
-
     weight_doses = ['mg', 'mg/kg/min', 'micrograms', 'microg/kg/min', 'mL']
     unit_doses = ['Million Units', 'Units', 'Units/hr', 'Units/kg/hr', 'microg/kg/min', 'mL']
     mmol_doses = ['']
 
     for i in drug_locs:
+        print(i)
 
     
     unique_patients = flow_sheet['project_id'].unique()
@@ -659,8 +659,226 @@ def fill_median_HRBP(column, sheet, typeHRBP):
     #Now fill in the values
     median_BPs = np.array([median_values[j] for i, j in np.ndenumerate(age_range)])
     sheet.loc[na_locs, column] = median_BPs[na_locs]
+    
+def fill_median(column, sheet):
+    """Function to fill in median values where normal missing
+    Takes a column to fill, sheet
+    """
 
-#### Start by only including columns from within ITU admission
+    column = return_colname(column, sheet)
+    na_locs = sheet[column].isna()
+
+    #Get median
+    median = np.median(sheet.loc[na_locs == False, column])
+    sheet.loc[na_locs, column] = median
+
+def remove_punct(column, new_column, sheet, punct_query):
+    """
+    Function to remove punctuation
+    """
+    column = return_colname(column, sheet)
+    if not new_column in sheet.columns:
+        sheet[new_column] = np.nan
+    
+    float_values = np.array([re.sub(punct_query, r'\2', str(row[column])) for index, row in sheet.iterrows()], dtype='f')
+    na_locs = np.isnan(float_values) == False
+    sheet.loc[na_locs, new_column] = float_values[na_locs]
+
+### Add in lab components
+
+
+
+
+## Now merge lab component columns into new cols
+#ALT
+make_new_columns('ALT_Alanine Transaminase (ALT)_U/L', labs, ['ALT'], True)
+
+#Albumin
+make_new_columns('ALB_Albumin_g/L', labs, ['Albumin'], True)
+make_new_columns('ALP_Alkaline Phosphatase (ALP)_U/L', labs, ['AlkPhos'], True)
+
+#AST
+make_new_columns('AST_Aspartate Transaminase (AST)_U/L', labs, ['AST'], True)
+
+#Aspartate
+make_new_columns('ASP_Aspartate_umol/L', labs, ['Aspartate'], True)
+
+#Amylase
+make_new_columns('AMY_Amylase_U/L', labs, ['Amylase'], True)
+
+#APTT
+make_new_columns('APTT_APTT_Seconds', labs, ['APTT'], True)
+make_new_columns('APTT_APTT_sec', labs, ['APTT'], True)
+
+#AG
+make_new_columns('POCGAP_Anion Gap POC_mmol/L', labs, ['Anion_gap'], True)
+
+#BE
+remove_punct('POCBEIM_BE (M) POC_mmol/L', 'Base_excess', labs, '(>|<)(.+)')
+make_new_columns('POCBASEEXC_Base Excess POC_mmol/L', labs, ['Base_excess'], True)
+
+#Basophils
+make_new_columns('BASOPHILS_Basophil_x10*9/L', labs, ['Basophils'], True)
+make_new_columns('BASOS1_Basophils_x10*9/L', labs, ['Basophils'], True)
+
+#Bicarb
+make_new_columns('POCBICARBI_Bicarb (M) POC_mmol/L', labs, ['Bicarb'], True)
+
+#pH
+make_new_columns('PH_Blood pH', labs, ['pH'], True)
+make_new_columns('POCPHC_pH (C) POC_pH', labs, ['pH'], True)
+make_new_columns('POCPHISTATM_pH (M) POC_pH', labs, ['pH'], True)
+remove_punct('POCPHT_PH (T) POC_pH', 'pH', labs, '(>|<)(.+)')
+remove_punct('POCPH_pH POC_pH', 'pH', labs, '(>|<)(.+)')
+
+#Blood cultures
+blood_culture = [['No growth', 'No growth at 48 hours - incubation and continuous monitoring is ongoing'], ['Positive']]
+make_new_columns('BOTRESANO2_Bottle Result Anaerobic', labs, ['Blood_culture'], newcols1 = blood_culture)
+make_new_columns('BOTRESO2_Bottle Result Aerobic', labs, ['Blood_culture'], newcols1 = blood_culture)
+
+#CRP
+remove_punct('CRP_C-reactive Protein (CRP)_mg/L', 'CRP', labs, '(>|<)(.+)')
+
+#Calcium - need to convert the POC potassium = have just scaled it to the ref ranges
+make_new_columns('CA_Calcium_mmol/L', labs, ['Ca2+'], True)
+def conv_Ca(a):
+    return (a - 1)*(5/3) + 2.2
+
+conv_column('POCCALCIUM_Calcium POC_mmol/L', sheet, 'Ca2+', conv_Ca)
+conv_column('POCCALI_Calcium POC_mmol/L', sheet, 'Ca2+', conv_Ca)
+
+#Cl
+make_new_columns('CL_Chloride_mmol/L', labs, ['Cl'], True)
+make_new_columns('POCCL_Chloride POC_mmol/L', labs, ['Cl'], True)
+
+#Cr
+remove_punct('CREAT_Creatinine_umol/L', 'CRP', labs, '(>|<)(.+)')
+
+#Hb
+make_new_columns('POCCTHB_ctHb POC_g/L', labs, ['Hb'], True)
+make_new_columns('HB1_Hb_g/L', labs, ['Hb'], True)
+
+#Eos
+make_new_columns('EOSINO_Eosinophil_x10*9/L', labs, ['Eosinophils'], True)
+make_new_columns('EOS1_Eosinophils_x10*9/L', labs, ['Eosinophils'], True)
+
+#Fibrinogen
+remove_punct('FIB_Fibrinogen_g/L', 'Fibrinogen', labs, '(>|<)(.+)')
+
+#FHHb, FMetHb, FO2Hb
+make_new_columns('POCFHHB_FHHb POC_%', labs, ['FHHb'], True)
+make_new_columns('POCFMETHB_FMetHb POC_%', labs, ['FMetHb'], True)
+make_new_columns('POCFO2HB_FO2HB POC_%', labs, ['FO2Hb'], True)
+
+#Glucose
+make_new_columns('GLU_Glucose_mmol/L', labs, ['Glucose'], True)
+make_new_columns('POCGLUCOSE_Glucose POC_mmol/L', labs, ['Glucose'], True)
+
+#HCT
+remove_punct('POCHCT_HCT POC_%', 'HCT%', labs, '(>|<)(.+)')
+make_new_columns('HCT1_HCT_L/L', labs, ['HCT'], True)
+
+#INR
+remove_punct('INR_INR', 'INR', labs, '(>|<)(.+)')
+
+#Lactate
+make_new_columns('LAC_Lactate_mmol/L', labs, ['Lactate'], True)
+make_new_columns('LAC_Lactate_mmol/L', labs, ['Lactate'], True)
+remove_punct('POCLAC_Lactate (art) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+remove_punct('POCLAC_Lactate (cap) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+remove_punct('POCLAC_Lactate (mv) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+remove_punct('POCLAC_Lactate (ven) POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+remove_punct('POCLAC_Lactate POC_mmol/L', 'Lactate', labs, '(>|<)(.+)')
+make_new_columns('BLAC_Blood Lactate_mmol/L', labs, ['Lactate'], True)
+
+#Lymphs
+make_new_columns('LYMPHS1_Lymphocyte_x10*9/L', labs, ['Lymphs'], True)
+make_new_columns('LYMPH_Lymphocyte_x10*9/L', labs, ['Lymphs'], True)
+make_new_columns('LYMPCNT_Lymphocyte Count_x10*9/L', labs, ['Lymphs'], True)
+
+#Mg
+make_new_columns('MG_Magnesium_mmol/L', labs, ['Mg'], True)
+
+#Monocytes
+make_new_columns('MONOS1_Monocyte_x10*9/L', labs, ['Monocytes'], True)
+make_new_columns('MONOCYTES_Monocytes_x10*9/L', labs, ['Monocytes'], True)
+
+#Neuts
+make_new_columns('NEUTS1_Neutrophils_x10*9/L', labs, ['Neuts'], True)
+make_new_columns('NEUTSABS_Neutrophils_x10*9/L', labs, ['Neuts'], True)
+
+#Various POC blood gas values
+make_new_columns('POCP50_p50 POC_kPa', labs, ['P50'], True)
+make_new_columns('POCPCO2_paCO2 POC_kPa', labs, ['PaCO2'], True)
+make_new_columns('POCPCO2_pcCO2 POC_kPa', labs, ['PcCO2'], True)
+make_new_columns('POCPCO2IC_pCO2 (C) POC_kPa', labs, ['PcCO2'], True)
+make_new_columns('POCPPCO2IM_pCO2 (M) POC_kPa', labs, ['PmCO2'], True)
+remove_punct('POCPO2_paO2 POC_kPa', 'PaO2', labs, '(>|<)(.+)')
+remove_punct('POCPO2_pcO2 POC_kPa', 'PcO2', labs, '(>|<)(.+)')
+make_new_columns('POCPCO2_pmvCO2 POC_kPa', labs, ['PvCO2'], True)
+make_new_columns('POCPO2_pmvO2 POC_kPa', labs, ['PvO2'], True)
+make_new_columns('POCPP02IM_pO2 (M) POC_kPa', labs, ['PmO2'], True)
+make_new_columns('POCPO2IC_pO2 (C) POC_kPa', labs, ['PcO2'], True)
+make_new_columns('POCPP02IM_pO2 (M) POC_kPa', labs, ['PmO2'], True)
+make_new_columns('POCPP02IM_pO2 (M) POC_kPa', labs, ['PmO2'], True)
+remove_punct('POCPO2_pO2 POC_kPa', 'PO2', labs, '(>|<)(.+)')
+remove_punct('POCPCO2_pvCO2 POC_kPa', 'PvCO2', labs, '(>|<)(.+)')
+remove_punct('POCPO2_pvO2 POC_kPa', 'PvO2', labs, '(>|<)(.+)')
+
+#Phos
+make_new_columns('PO5_Phosphate_mmol/L', labs, ['PO5'], True)
+make_new_columns('PLT1_Platelet Count_x10*9/L', labs, ['Plts'], True)
+
+#Potassium
+remove_punct('K1_Potassium_mmol/L', 'K+', labs, '(>|<)(.+)')
+remove_punct('POCPOTASSIU_Potassium (art) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+remove_punct('POCPOTASSIU_Potassium (cap) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+remove_punct('POCPOTASSIU_Potassium (mv) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+remove_punct('POCPOTASSIU_Potassium (ven) POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+remove_punct('POCPOTASSIU_Potassium POC_mmol/L', 'K+', labs, '(>|<)(.+)')
+
+#PT
+remove_punct('PT_Prothrombin Time_sec', 'PT', labs, '(>|<)(.+)')
+remove_punct('PT_Prothrombin Time_Seconds', 'PT', labs, '(>|<)(.+)')
+
+#Retics
+remove_punct('RETIC_Reticulocyte (Retic) count_x10*9/L', 'Retics', labs, '(>|<)(.+)')
+remove_punct('RETIC_Reticulocyte (Retic) count_10*9/L', 'Retics', labs, '(>|<)(.+)')
+
+#RBC
+remove_punct('BFRBC_Red Blood Cell Count_x 10*6 /litre', 'RBC', labs, '(>|<)(.+)')
+
+#Na
+remove_punct('NA1_Sodium_mmol/L', 'Na+', labs, '(>|<)(.+)')
+remove_punct('POCSODIUM_Sodium POC_mmol/L', 'Na+', labs, '(>|<)(.+)')
+remove_punct('POCNAISTAT_Sodium POC_mmol/L', 'Na+', labs, '(>|<)(.+)')
+
+#TT
+remove_punct('TT_Thrombin Time_sec', 'TT', labs, '(>|<)(.+)')
+remove_punct('TT_Thrombin Time_Seconds', 'TT', labs, '(>|<)(.+)')
+
+#Bili
+remove_punct('TBIL_Total bilirubin_umol/L', 'Bili', labs, '(>|<)(.+)')
+remove_punct('CALBILI_Total bilirubin (BU + BC)_umol/L', 'Bili', labs, '(>|<)(.+)')
+remove_punct('POCBILIRUBIN_Total Bilirubin POC_µmol/L', 'Bili', labs, '(>|<)(.+)')
+
+#WCC
+remove_punct('BFWBC_White Blood Cell Count_x 10*6 /litre', 'WCC', labs, '(>|<)(.+)')
+remove_punct('WBC1_WBC_x10*9/L', 'WCC', labs, '(>|<)(.+)')
+remove_punct('WBCAUTOSYNC_White Blood Cells_x10*9/L', 'WCC', labs, '(>|<)(.+)')
+remove_punct('WCC_White Cell Count_x10*9/L', 'WCC', labs, '(>|<)(.+)')
+remove_punct('OFWBC_White Cell Count_x10*9/L', 'WCC', labs, '(>|<)(.+)')
+
+#Now only merge the columns we have just made
+lab_cols = ['project_id', 'collected_datetime', 'ALT', 'Albumin', 'AlkPhos', 'AST', 'Aspartate', 
+        'Amylase', 'APTT', 'Anion_gap', 'Base_excess', 'Basophils', 
+        'Bicarb', 'pH', 'Blood_culture', 'CRP', 'Ca2+', 'Cl', 'Eosinophils', 
+        'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT%', 'HCT', 'INR', 
+        'Lactate', 'Lymphs', 'Mg', 'Monocytes', 'Neuts', 'P50', 'PaCO2', 
+        'PcCO2', 'PmCO2', 'PaO2', 'PcO2', 'PmO2', 'PO2', 'PvCO2', 
+        'PcO2', 'PO5', 'Plts', 'K+', 'PT', 'Retics', 'Na+', 'TT', 'Bili', 'WCC']
+
+flowsheet = pd.merge(flowsheet, labs.loc[:, lab_cols], how = 'outer', left_on = ['project_id', 'taken_datetime'], right_on = ['project_id', 'collected_datetime'])
 
 if (os.path.exists('/local/data/public/2020/dfs28/PICU_data/flowsheet_all_times.csv') == False):
 
@@ -698,6 +916,13 @@ else:
 
 if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ventilation_interpolated.csv') == False):
     flowsheet = pd.read_csv('/local/data/public/2020/dfs28/PICU_data/flowsheet_all_times.csv', parse_dates = ['taken_datetime'])
+
+    #Interpolate labs maximum 4 days
+    for i in lab_cols[2:-1]:
+        interpolate_cols(i, flowsheet, 'pad', how_far = 5760, limit_direction = 'forward', fill = fill_median)
+
+    #Calculate strong ion gap?
+    SID_calc = flowsheet['Na+'] + flowsheet['K+'] + flowsheet['']
 
     #Bodyweight
     print_all(flowsheet)
@@ -765,8 +990,6 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
     PEEP/EPAP, IPAP, some other ventilation settings if they are available
     """
     #'R GOSH ICU AIRWAY STATUS' 14 ##### Is HFO high frequency oscillation or high flow oxygen?
-    #Should I consider this as a separate var?
-    #print_allunique(flowsheet, 14)
     ventilated14 = [['SVIA', 'NO'], 
                     ['Low Flow NC', 'Face Mask', 'SVIA;Low Flow NC', 'Face Mask;Low Flow NC', 'SVIA;Face Mask', 
                     'Low Flow NC;SVIA'], 
@@ -777,59 +1000,35 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
     make_new_columns(14, flowsheet, ['HFO'], newcol1 = HFO14)
 
     #'R GOSH IP PANDA AIRWAY' 15
-    #print_allunique(flowsheet, 15)
     ventilated15 = [[], [], [], ['Intubation']]
     make_new_columns('R GOSH IP PANDA AIRWAY', flowsheet, ['Ventilation'], newcol1 = ventilated15)
 
 
     #'R GOSH NICU AIRWAY STATUS' 16
-    #print_allunique(flowsheet, 16)
     ventilated16 = [[], [], [], ['Conventional ventilation']]
     make_new_columns('R GOSH NICU AIRWAY STATUS', flowsheet, ['Ventilation'], newcol1 = ventilated16)
 
     #'R GOSH RESUS ABCDE AIRWAY' 17
-    #print_allunique(flowsheet, 17)
     ventilated16 = [[],[], [], ['Intubated', 'Intubated;Opening manoeuvres', 'Intubated;Patent']]
     make_new_columns('R GOSH RESUS ABCDE AIRWAY', flowsheet, ['Ventilation'], newcol1 = ventilated16)
 
-    #'R ED AIRWAY (WDL)' 18 - not using
-    #print_allunique(flowsheet, 18)
-
     #'R AIRWAY LDA INSERTION ATTEMPTS' 19
-    #print_allunique(flowsheet, 19)
     ventilated19 = [[], [], [], [1, 2, '1', '2', '3 or more']]
     make_new_columns('R AIRWAY LDA INSERTION ATTEMPTS', flowsheet, ['Ventilation'], newcol1 = ventilated19)
 
     #'R GOSH IP CATS AIRWAY STATUS' 20
-    #print_allunique(flowsheet, 20)
     ventilated20 = [[], [], [],  ['Intubated']]
     make_new_columns('R GOSH IP CATS AIRWAY STATUS', flowsheet, ['Ventilation'], newcol1 = ventilated20)
 
-    #R VENT ALARM APNOEA SECONDS_Seconds 28 - come back to this one - could be NIV or 
-    #print_allunique(flowsheet, 28)
-
-    #R IP VENT APNOEA RATE 30
-
-    #R IP VENT APNOEA VOLUME_mL 31
-
     #34, 'R GOSH IP ARE THEY INTUBATED AND VENTILATED?'
-    #print_allunique(flowsheet, 34)
     ventilated34 = [[], [], ['No - Non-invasive Ventilation', 'No - Optiflow'], ['Yes - Invasive ventilation']]
     make_new_columns('R GOSH IP ARE THEY INTUBATED AND VENTILATED?', flowsheet, ['Ventilation'], newcol1 = ventilated34)
 
     #127, 'R GOSH CPAP CMH2O_cmH2O'
-    #print_allunique(flowsheet, 127)
     make_new_columns('R GOSH CPAP CMH2O_cmH2O', flowsheet, ['IPAP'], True)
     make_new_columns('R GOSH CPAP CMH2O_cmH2O', flowsheet, ['EPAP'], True)
 
-    #128, 'R GOSH IP FF CPAP/BIPAP MASK'
-    #print_allunique(flowsheet, 128)
-
-    #129, 'R OPTIME RECOVERY CPAP/IPPV'
-    #print_allunique(flowsheet, 129)
-
     #136, 'R GOSH TRACHE CUFF'
-    #print_allunique(flowsheet, 136)
     trache136 = [[], ['Inflated', 'Deflated', 'Deflated;Inflated', 'Inflated;Deflated', 'Deflated;Inflated;Leak present', 
                 'Leak present;Inflated', 'Inflated;Leak present', 'Leak present', 'Inflated;Deflated;Leak present', 
                 'Other (Comment)', 'Cuffless', 'Cuffless;Leak present', 'Leak present;Cuffless', 'Deflated;Leak present', 
@@ -839,132 +1038,88 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
     make_new_columns('R GOSH TRACHE CUFF', flowsheet, ['Tracheostomy'], newcol1 = trache136)
 
     #198, 'R GOSH ASTRAL EPAP_cm H2O') - Astral is NIV
-    #print_allunique(flowsheet, 198)
     unique_vent198 = flowsheet.iloc[:, 'R GOSH ASTRAL EPAP_cm H2O'].unique()
     vent198 = [[], [], unique_vent198[range(1, len(unique_vent198))].tolist(), []]
     make_new_columns('R GOSH ASTRAL EPAP_cm H2O', flowsheet, ['Ventilation'], newcol1 = vent198)
     make_new_columns('R GOSH ASTRAL EPAP_cm H2O', flowsheet, ['EPAP'], True)
 
     #199, 'R GOSH EPAP'
-    #print_allunique(flowsheet, 'R GOSH EPAP')
     make_new_columns('R GOSH EPAP', flowsheet, ['EPAP'], True)
 
     #200, 'R GOSH NIPPY EPAP_cmH2O
-    #print_allunique(flowsheet, 'R GOSH NIPPY EPAP_cmH2O')
     unique_vent200 = flowsheet.iloc[:, 'R GOSH NIPPY EPAP_cmH2O'].unique()
     vent200 = [[], [], unique_vent200[range(1, len(unique_vent200))].tolist(), []]
     make_new_columns('R GOSH NIPPY EPAP_cmH2O', flowsheet, ['Ventilation'], newcol1 = vent200)
     make_new_columns(200, flowsheet, ['EPAP'], True)
 
     #204, 'R GOSH ICU END TIDAL CO2_% Should work out if this means they are ventilated
-    #print_allunique(flowsheet, 204)
     make_new_columns('R GOSH ICU END TIDAL CO2_%', flowsheet, ['ETCO2'], True)
 
     #205, 'R VENT ETCO2_kPa Should work out if this means they are ventilated
-    #print_allunique(flowsheet, 205)
     make_new_columns('R VENT ETCO2_kPa', flowsheet, ['ETCO2'], True)
 
     #206, 'R IP VENT ALARM ETCO2/TCM MAX_mmHg
-    #print_allunique(flowsheet, 206)
     make_new_columns('R IP VENT ALARM ETCO2/TCM MAX_mmHg', flowsheet, ['ETCO2'], True)
 
-    #207, 'R IP VENT ALARM ETCO2/TCM MIN_mmHg
-    #print_allunique(flowsheet, 207)
-
-    #208, 'R GOSH ICU TRANSFER ETT
-    #print_allunique(flowsheet, 208)
-
-    #209, 'R GOSH ICU TRANSFER ETT SECURE
-    #print_allunique(flowsheet, 209)
-
     #210, 'R ETT TO LIP_cm
-    #print_allunique(flowsheet, 210)
     unique_vent210 = flowsheet.iloc[:, 'R ETT TO LIP_cm'].unique()
     vent210 = [[], [], [], unique_vent210[range(1, len(unique_vent210))].tolist()]
     make_new_columns('R ETT TO LIP_cm', flowsheet, ['Ventilation'], newcol1 = vent210)
 
     #211, 'R ETT TO NOSE_cm'
-    #print_allunique(flowsheet, 211)
     unique_vent211 = flowsheet.iloc[:, 'R ETT TO NOSE_cm'].unique()
     vent211 = [[], [], [], unique_vent211[range(1, len(unique_vent211))].tolist()]
     make_new_columns('R ETT TO NOSE_cm', flowsheet, ['Ventilation'], newcol1 = vent211)
 
-    #213, 'R EVENT SPO2'
-    #print_allunique(flowsheet, 213)
-
     #214, 'R AN AGENTS DESFLURANE EXPIRED_%'
-    #print_allunique(flowsheet, 214)
     unique_vent214 = flowsheet.iloc[:, 'R AN AGENTS DESFLURANE EXPIRED_%'].unique()
     vent214 = [[], [], [], unique_vent214[range(1, len(unique_vent214))].tolist()]
     make_new_columns('R AN AGENTS DESFLURANE EXPIRED_%', flowsheet, ['Ventilation'], newcol1 = vent214)
 
     #215, 'R AN AGENTS ISOFLURANE EXPIRED_%'
-    #print_allunique(flowsheet, 215)
     unique_vent215 = flowsheet.iloc[:, 'R AN AGENTS ISOFLURANE EXPIRED_%'].unique()
     vent215 = [[], [], [], unique_vent215[range(1, len(unique_vent215))].tolist()]
     make_new_columns('R AN AGENTS ISOFLURANE EXPIRED_%', flowsheet, ['Ventilation'], newcol1 = vent215)
 
     #216, 'R AN EXPIRED MINUTE VOLUME_L/min'
-    #print_allunique(flowsheet, 216)
     make_new_columns('R AN EXPIRED MINUTE VOLUME_L/min', flowsheet, ['Ventilation'], 
                         newcol1 = make_allnonNa(flowsheet, 'R AN EXPIRED MINUTE VOLUME_L/min', 4, 4))
 
     #217, 'R AN EXPIRED N2O_%'\\
-    #print_allunique(flowsheet, 217)
     make_new_columns('R AN EXPIRED N2O_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet, 'R AN EXPIRED N2O_%', 4, 4))
 
     #218, 'R AN AGENTS SEVOFLURANE EXPIRED_%'
-    #print_allunique(flowsheet, 218)
     make_new_columns('R AN AGENTS SEVOFLURANE EXPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet, 'R AN AGENTS SEVOFLURANE EXPIRED_%', 4, 4))
 
     #219, 'R GOSH EXP TV LITRES_L' - should consider expired tidal volume?
-    #print_allunique(flowsheet, 219)
     make_new_columns('R GOSH EXP TV LITRES_L', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet, 'R GOSH EXP TV LITRES_L', 4, 4))
 
     #220, 'R VENT EXP TIDAL VOLUME_mL'
-    #print_allunique(flowsheet, 220)
     make_new_columns(220, flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet, 'R VENT EXP TIDAL VOLUME_mL', 4, 4))
 
-    #222, 'R GOSH ICU WITHDRAWAL EXTUBATION'
-    #print_allunique(flowsheet, 222)
-
     #234, 'R AN FIO2_%'
-    #print_allunique(flowsheet, 234)
     cor_FiO2('R AN FIO2_%', flowsheet, 'FiO2')
 
     #235, 'R PERF FIO2_%'
-    #print_allunique(flowsheet, 235)
     cor_FiO2('R PERF FIO2_%', flowsheet, 'FiO2')
 
-    #236, 'R GOSH ICU SANDWICH FIO2'
-    #print_allunique(flowsheet, 236)
-
-    #237, 'R INSPIRED O2 FIO2 FOR NO_%' - FIO2, will need to correct
-    #print_allunique(flowsheet, 237)
-
     #238, 'R GOSH IP FIO2 SETTING_%'
-    #print_allunique(flowsheet, 238)
     cor_FiO2('R GOSH IP FIO2 SETTING_%', flowsheet, 'FiO2')
 
-    #239, 'R VENT INSP FLOWS_L/min' #Should probably do this inspired o2 corrected by bodyweight thing
-    #print_allunique(flowsheet, 239)
+    #239, 'R VENT INSP FLOWS_L/min'
     make_new_columns('R VENT INSP FLOWS_L/min', flowsheet, ['O2Flow'], True)
 
     #240, 'R GOSH VENT FLOW ML/KG_mL/Kg'
-    #print_allunique(flowsheet, 240)
     make_new_columns('R GOSH VENT FLOW ML/KG_mL/Kg', flowsheet, ['O2Flow/kg'], True)
 
     #241, 'R IP VENT FLOW OBS_L/min'
-    #print_allunique(flowsheet, 241)
     make_new_columns('R IP VENT FLOW OBS_L/min', flowsheet, ['O2Flow'], True)
 
     #242, 'R GOSH AIRVO FLOW_L/min' Highflow o2
-    #print_allunique(flowsheet, 242)
     make_new_columns('R GOSH AIRVO FLOW_L/min' , flowsheet, ['O2Flow'], True)
     make_new_columns('R GOSH AIRVO FLOW_L/min' , flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet, 'R GOSH AIRVO FLOW_L/min' , 2, 4))
 
     #R GOSH VENT FABIAN O2 THERAPY FLOW_L/min HFNC/ NIV
-    #print_allunique(flowsheet, 'R GOSH VENT FABIAN O2 THERAPY FLOW_L/min')
     make_new_columns('R GOSH VENT FABIAN O2 THERAPY FLOW_L/min', flowsheet, ['O2Flow'], True)
     make_new_columns('R GOSH VENT FABIAN O2 THERAPY FLOW_L/min', flowsheet, ['Ventilation'], 
                     newcol1 = make_allnonNa(flowsheet, 'R GOSH VENT FABIAN O2 THERAPY FLOW_L/min', 2, 4))
@@ -975,206 +1130,101 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ve
     make_new_columns('R GOSH HFO BASE FLOW READING', flowsheet, ['O2Flow'], True)
 
     #285, 'R GOSH HFO BASE FLOW SETTING')
-    #print_allunique(flowsheet, 285)
     make_new_columns('R GOSH HFO BASE FLOW SETTING', flowsheet, ['HFO'], newcol1 = make_allnonNa(flowsheet, 'R GOSH HFO BASE FLOW SETTING', 2, 2))
     make_new_columns('R GOSH HFO BASE FLOW SETTING', flowsheet, ['O2Flow'], True)
 
     #287, 'R GOSH HFO FREQUENCY READING_Hz')
-    #print_allunique(flowsheet, 287)
     make_new_columns('R GOSH HFO FREQUENCY READING_Hz', flowsheet, ['HFO'], newcol1 = make_allnonNa(flowsheet, 'R GOSH HFO FREQUENCY READING_Hz', 2, 2))
 
     #(288, 'R GOSH IP HFV FREQUENCY SETTING_Hz')
-    #print_allunique(flowsheet, 288)
     make_new_columns('R GOSH IP HFV FREQUENCY SETTING_Hz', flowsheet, ['HFO'], newcol1 = make_allnonNa(flowsheet, 'R GOSH IP HFV FREQUENCY SETTING_Hz', 2, 2))
 
-    #(289, 'R GOSH IP HFV I:E RATIO SETTING') - should probably consider calculating I:E manually
-    #print_allunique(flowsheet, 289)
-
     #(290, 'R GOSH IP HFV TIDAL VOLUME_mL')HFV is high frequency ventilation
-    #print_allunique(flowsheet, 290)
     make_new_columns('R GOSH IP HFV TIDAL VOLUME_mL', flowsheet, ['HFO'], newcol1 = make_allnonNa(flowsheet, 'R GOSH IP HFV TIDAL VOLUME_mL', 2, 2))
 
     #(291, 'R GOSH HIGH FIO2_%') 
-    #print_allunique(flowsheet, 291)
     cor_FiO2('R GOSH HIGH FIO2_%', flowsheet, 'FiO2')
 
     #R IP VENT HUMIDIFIER TEMP (SET)')
-    #print_allunique(flowsheet, 'R IP VENT HUMIDIFIER TEMP (SET)')
     make_new_columns("R IP VENT HUMIDIFIER TEMP (SET)", flowsheet, ['Ventilation'], 
                         newcol1 = make_allnonNa(flowsheet, 'R IP VENT HUMIDIFIER TEMP (SET)', 4, 4))
 
-    #(306, 'R VENT I:E RATIO') # Need to fix these
-    #print_allunique(flowsheet, 306)
-    #make_new_columns(306, flowsheet, ['Ventilation'], 
-    #                    newcol1 = make_allnonNa(flowsheet, 306, 4, 4))
-
-    #(307, 'R AN I:E RATIO')
-    #print_allunique(flowsheet, 307)
-    #make_new_columns(307, flowsheet, ['Ventilation'], 
-    #                    newcol1 = make_allnonNa(flowsheet, 307, 4, 4))
-
-    #(315, 'R IP VENT INSPIRATORY PRESSURE HIGH_cm H2O')
-    #print_allunique(flowsheet, 315)
-
-    #316, 'R IP VENT INSPIRATORY PRESSURE LOW_cm H2O')
-    #print_allunique(flowsheet, 316)
-
     #(317, 'R GOSH INSPRIATORY PRESSURE')
-    #print_allunique(flowsheet, 317)
     make_new_columns('R GOSH INSPRIATORY PRESSURE', flowsheet, ['IPAP'], True)
 
     #(320, 'R VENT INSP TIME_Sec')
-    #print_allunique(flowsheet, 320)
     make_new_columns('R VENT INSP TIME_Sec', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,'R VENT INSP TIME_Sec',  4, 4))
 
     #(322, 'R AN AGENTS DESFLURANE INSPIRED_%')
-    #print_allunique(flowsheet, 322)
     make_new_columns('R AN AGENTS DESFLURANE INSPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,'R AN AGENTS DESFLURANE INSPIRED_%',  4, 4))
 
     #(323, 'R FIO2_%')
-    #print_allunique(flowsheet, 323)
     make_new_columns('R FIO2_%', flowsheet, ['FiO2'], True)
 
     #(324, 'R AN AGENTS ISOFLURANE INSPIRED_%')
-    #print_allunique(flowsheet, 324)
     make_new_columns('R AN AGENTS ISOFLURANE INSPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN AGENTS ISOFLURANE INSPIRED_%',  4, 4))
 
     #(325, 'R AN INSPIRED N2O_%')
-    #print_allunique(flowsheet, 325)
     make_new_columns('R AN INSPIRED N2O_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN INSPIRED N2O_%',  4, 4))
 
     #(326, 'R AN INSPIRED NO2_ppm')
-    #print_allunique(flowsheet, 326)
     make_new_columns('R AN INSPIRED NO2_ppm', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN INSPIRED NO2_ppm',  4, 4))
 
     #(327, 'R AN AGENTS NITRIC OXIDE_ppm')
-    #print_allunique(flowsheet, 327)
     make_new_columns('R AN AGENTS NITRIC OXIDE_ppm', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN AGENTS NITRIC OXIDE_ppm',  4, 4))
 
-    #(328, 'R INSPIRED NO SETTING')
-    #(329, 'R AN INSPIRED O2 SETTING')
     #(330, 'R AN AGENTS SEVOFLURANE INSPIRED_%')
-    #print_allunique(flowsheet, 330)
     make_new_columns('R AN AGENTS SEVOFLURANE INSPIRED_%', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'R AN AGENTS SEVOFLURANE INSPIRED_%',  4, 4))
 
-    #(331, 'R GOSH IP INSPIRED TIDAL VOLUME_mL')
     #(333, 'R GOSH IPAP')
-    #print_allunique(flowsheet, 333)
     make_new_columns('R GOSH IPAP', flowsheet, ['IPAP'], True)
 
-
     #(332, 'R GOSH ASTRAL IPAP_cm H2O')
-    #print_allunique(flowsheet, 332)
     make_new_columns('R GOSH ASTRAL IPAP_cm H2O', flowsheet, ['IPAP'], True)
 
     #(334, 'R GOSH NIPPY IPAP_cmH2O')
-    #print_allunique(flowsheet, 334)
     make_new_columns('R GOSH NIPPY IPAP_cmH2O', flowsheet, ['IPAP'], True)
 
     #(335, 'R GOSH STELLA IPAP_cm H2O')
-    #print_allunique(flowsheet, 335)
     make_new_columns('R GOSH STELLA IPAP_cm H2O', flowsheet, ['IPAP'], True)
-
-
-    """(360, 'R GOSH ICU LEVEL WOB')
-    (367, 'R GOSH LOW FIO2_%')
-    (368, 'R GOSH IP VENT LOW FLOW ALARM_l/min')
-    (369, 'R GOSH LOW FLOW ALARM_L/min')
-    (370, 'R GOSH LOW MINUTE VENTILATION ALARM_L/min')
-    (371, 'R GOSH LOW MVE_L/min')
-    (372, 'R GOSH LOW PEEP')
-    (373, 'R GOSH IP VENT LOW RESP ALARM_bpm')
-    (374, 'R GOSH LOW RESPIRATORY RATE - BPM_bpm')
-    (376, 'R IP VENT MV LOW_L/min')
-    (377, 'R GOSH VENT RATE')"""
-    #print_allunique(flowsheet,'R IP VENT MV LOW_L/min')
     make_new_columns('R IP VENT MV LOW_L/min', flowsheet, ['Ventilation_L_min'], True)
-
     make_new_columns('R GOSH VENT RATE', flowsheet, ['Ventilation(ml)'], True)
-
-    """
-    (378, 'R GOSH VENT RATE OBSERVED')
-    """
-    #print_allunique(flowsheet, 378)
     make_new_columns('R GOSH VENT RATE OBSERVED', flowsheet, ['Ventilation(ml)'], True)
-
-    """
-    (379, 'R IP VENT VT MANDATORY (OBS)_mL')
-    """
-
-    """
-    (380, 'R MAP')
-    """
-    #print_allunique(flowsheet, 380)
     make_new_columns('R MAP', flowsheet, ['MeanAirwayPressure'], True)
 
-    """
-    (381, 'R IP VENT MEAN AIRWAY PRESSURE HIGH_cm H2O')
-    (382, 'R IP VENT MEAN AIRWAY PRESSURE LOW_cm H2O')
-    """
-
     #(387, 'R VENT MAP_cm H2O')
-    #print_allunique(flowsheet, 387)
     make_new_columns('R VENT MAP_cm H2O', flowsheet, ['MeanAirwayPressure'], True)
 
-
     #(388, 'R IP VENT MEAN AIRWAY PRESSURE (SET)')
-    #print_allunique(flowsheet, 388)
     make_new_columns('R IP VENT MEAN AIRWAY PRESSURE (SET)', flowsheet, ['MeanAirwayPressure'], True)
 
-    """
-    (391, 'R VENT MINUTE VENTILATION_L/min')
-    (392, 'R GOSH MIN VOL LEAK_L/min')
-    (393, 'R GOSH IP MINUTE VOLUME SETTING_L/min')
-    """
-
     #(424, 'R AN AGENTS O2_L/min')
-    #print_allunique(flowsheet, 424)
     make_new_columns('R AN AGENTS O2_L/min', flowsheet, ['O2Flow'], True)
 
-    #427 R OXYGEN DELIVERY METHOD)
-    #print_allunique(flowsheet, 427)
-    
     #(428, 'R RT OXYGEN FLOW RATE_L/min')
-    #print_allunique(flowsheet, 428)
     make_new_columns('R RT OXYGEN FLOW RATE_L/min', flowsheet, ['O2Flow'], True)
 
     # 429, 'R OXYGEN FLOW RATE_L/min')
-    #print_allunique(flowsheet, 429)
     make_new_columns('R OXYGEN FLOW RATE_L/min', flowsheet, ['O2Flow'], True)
 
     #(442, 'R GOSH AIRVO OXYGEN %_%')
-    #print_allunique(flowsheet, 442)
     cor_FiO2('R GOSH AIRVO OXYGEN %_%', flowsheet, 'FiO2')
 
-    #(446, 'R OXYGEN THERAPY')
-    #print_allunique(flowsheet, 446)
-
     #(492, 'R GOSH ASTRAL PEEP_cm H2O')
-    #print_allunique(flowsheet, 492)
     make_new_columns('R GOSH ASTRAL PEEP_cm H2O', flowsheet, ['PEEP'], True)
 
     #(493, 'R GOSH PEEP_cmH2O')
-    #print_allunique(flowsheet, 493)
     make_new_columns('R GOSH PEEP_cmH2O', flowsheet, ['PEEP'], True)
 
     #(494, 'R VENT PEEP_cm H2O')
-    #print_allunique(flowsheet, 494)
     make_new_columns('R VENT PEEP_cm H2O', flowsheet, ['PEEP'], True)
 
-    #(495, 'R GOSH ICU PEEP 8')
-    #print_allunique(flowsheet, 495)
-
     #(496, 'R GOSH IP VENT PEEP SETTING_cm H2O')
-    #print_allunique(flowsheet, 496)
     make_new_columns('R GOSH IP VENT PEEP SETTING_cm H2O', flowsheet, ['PEEP'], True)
 
     #(497, 'R AN VENT PEEP_cm H20')
-    #print_allunique(flowsheet, 497)
     make_new_columns('R AN VENT PEEP_cm H20', flowsheet, ['PEEP'], True)
 
-    
-    
     #Now use some columns to update others
     make_new_columns('ETCO2', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'ETCO2',  4, 4))
     make_new_columns('HFO', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'HFO',  4, 4))
@@ -1231,112 +1281,31 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
 
     #Make a unified BP column
     #4, 'R AN ARTERIAL BLOOD PRESSURE'
-    #print_allunique(flowsheet, 4)
     conv_BP('R AN ARTERIAL BLOOD PRESSURE', flowsheet, 3, 'SysBP', 'DiaBP')
 
     #5, 'R AN MEAN ARTERIAL BLOOD PRESSURE_mmHg'
-    #print_allunique(flowsheet, 5)
     conv_BP('R AN MEAN ARTERIAL BLOOD PRESSURE_mmHg', flowsheet, False, 'MAP')
 
     #26, 'R AN CENTRAL AORTIC PRESSURE (CAP)'
-    #print_allunique(flowsheet, 26)
     conv_BP('R AN CENTRAL AORTIC PRESSURE (CAP)', flowsheet, 3, 'SysBP', 'DiaBP')
 
     #27, 'R AN CENTRAL AORTIC PRESSURE (CAP) MEAN_mmHg'
-    #print_allunique(flowsheet, 27)
     conv_BP('R AN CENTRAL AORTIC PRESSURE (CAP) MEAN_mmHg', flowsheet, False, 'MAP')
 
-    #(36, 'R ARTERIAL LINE WAVEFORM') - not used
-    #print_allunique(flowsheet, 36)
-
     #37, 'R GOSH IP MEAN ARTERIAL BLOOD PRESSURE_mmHg')
-    #print_allunique(flowsheet, 37)
     conv_BP('R GOSH IP MEAN ARTERIAL BLOOD PRESSURE_mmHg', flowsheet, False, 'MAP')
 
     #39, 'R ARTERIAL LINE BLOOD PRESSURE')
-    #print_allunique(flowsheet, 39)
     conv_BP('R ARTERIAL LINE BLOOD PRESSURE', flowsheet, 3, 'SysBP', 'DiaBP')
 
     #(40, 'R MAP A-LINE_mmHg')
-    #print_allunique(flowsheet, 40)
     conv_BP('R MAP A-LINE_mmHg', flowsheet, False, 'MAP')
 
-    #(68, 'R GOSH IP NEONATAL PAIN BLOOD PRESSURE') - not using
-    #print_allunique(flowsheet, 68)
-
-    #(69, 'R GOSH PEWS BP SCORE')  - PEWs score
-    #print_allunique(flowsheet, 69)
-
-    #(79, 'R PED BOYS DIASTOLIC BP PERCENTILE_%') - centile only
-    #print_allunique(flowsheet, 79)
-
-    #(80, 'R PED BOYS SYSTOLIC BP PERCENTILE_%')
-
     #(81, 'BLOOD PRESSURE')
-    #print_allunique(flowsheet, 81)
     conv_BP('BLOOD PRESSURE', flowsheet, 3, 'SysBP', 'DiaBP')
 
-    #(161, 'R PED DIASTOLIC BP PERCENTILE_%')
-    #print_allunique(flowsheet, 161)
-
-    #(162, 'R GOSH CV HAEMO DIASTOLE 1 NEW_mmHg')
-    #print_allunique(flowsheet, 162)
-
-    #(163, 'R GOSH CV HAEMO DIASTOLE 1_mmHg')
-    #print_allunique(flowsheet, 163)
-
-    #(164, 'R GOSH CV HAEMO DIASTOLE 2_mmHg')
-    #print_allunique(flowsheet, 164)
-
-    #(192, 'R GOSH CV HAEMO EDP 1 NEW_mmHg')
-    #print_allunique(flowsheet, 192)
-
-    #(193, 'R GOSH CV HAEMO EDP 1_mmHg')
-    #print_allunique(flowsheet, 193)
-
-    #(255, 'R PED GIRLS DIASTOLIC BP PERCENTILE_%')
-    #print_allunique(flowsheet, 255)
-
-    #(256, 'R PED GIRLS SYSTOLIC BP PERCENTILE_%')
-    #print_allunique(flowsheet, 256)
-
-    #(361, 'R BP LOCATION')
-    #print_allunique(flowsheet, 361)
-
-    #(385, 'R GOSH CV HAEMO MEAN 1_mmHg')
-    #print_allunique(flowsheet, 385)
-
-    #(386, 'R GOSH CV HAEMO MEAN 2_mmHg')
-    #print_allunique(flowsheet, 386)
-
     #(411, 'R AN NIBP MEAN_mmHg')
-    #print_allunique(flowsheet, 411)
     conv_BP('R AN NIBP MEAN_mmHg', flowsheet, False, 'MAP')
-
-
-
-    """
-    (623, 'R GOSH CV HAEMO SYSTOLE 1 NEW_mmHg')
-    (624, 'R GOSH CV HAEMO SYSTOLE 1_mmHg')
-    (625, 'R GOSH CV HAEMO SYSTOLE 2_mmHg')
-    (621, 'R PED SYSTOLIC BP PERCENTILE_%')
-    (626, 'R IP DOPPLER BLOOD PRESSURE')
-    (627, 'R PIM SYSTOLIC BLOOD PRESSURE_mmHg')
-    (638, 'R GOSH ICU TARGET DIASTOLIC MAX_mmHg')
-    (639, 'R GOSH ICU TARGET DIASTOLIC MIN_mmHg')
-    """
-
-
-    """
-    (636, 'R GOSH ICU TARGET CVP MAX_mmHg')
-    (637, 'R GOSH ICU TARGET CVP MIN_mmHg')
-    """
-    #(141, 'R AN CVP MEAN_mmHg')
-    #print_allunique(flowsheet, 141)
-
-    #(142, 'R DEVICE CVP MEAN_mmHg')
-    ##print_allunique(flowsheet, 142)
-
 
     ##### Now fix the problem with MAP
     #Pull out where MAP is a **/** format
@@ -1382,6 +1351,10 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
 
     #Should probably do something as above with median HR
     interpolate_cols('HR', flowsheet, 'linear', 'HR', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
+
+
+
+
 
     #GCS/ AVPU
     print_all(flowsheet)
@@ -1459,6 +1432,10 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     interpolate_cols('GCS', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 15)
     interpolate_cols('AVPU', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 3)
 
+
+
+
+
     #CRT
     print_all(flowsheet)
     get_relevant_cols(flowsheet, 'Cap|Refill|CRT|Time')
@@ -1483,6 +1460,9 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
 
     fill_missing('CRT', flowsheet, 'CRT_missing')
     interpolate_cols('CRT', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 2)
+
+
+
 
 
 
@@ -1609,6 +1589,20 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     #Will need to double check about duplicates here
     #May need to normalise by bodyweight?
 
+    #ECMO moved here as ECMO = maximal inotropy
+    #ECMO
+    get_relevant_cols(flowsheet, 'ECMO')
+    make_new_columns('R ECMO  FLOW PROBE', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 147, 2, 2))
+    make_new_columns('R GOSH LDA ECMO LINE STATUS', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 185, 2, 2))
+    make_new_columns('R ECMO PUMP FLOW (L/MIN)_L/min', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 186, 2, 2))
+    make_new_columns('R ECMO CLAMPS CHECK', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 188, 2, 2))
+    make_new_columns('GOSH ICU ECMO HCT', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 190, 2, 2))
+    make_new_columns('R ECMO ON/OFF', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 279, 2, 2))
+    make_new_columns('R ECMO HEAT EXCHANGER WATER LEVEL', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 280, 2, 2))
+    make_new_columns('R HOURS ON ECMO', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 295, 2, 2))
+    make_new_columns('R GOSH ECMO NUMBER CIRCUITS', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 423, 2, 2))
+    fill_missing('ECMO', flowsheet, 'ECMO_missing')
+
     #Other organ support
     print_all(flowsheet)
     """
@@ -1667,13 +1661,22 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     conv_column('R GOSH MILRINONE HOURLY VOLUME_mL', flowsheet, 'EquivMilrinone', corMilrinone)
     sum_inout('EquivMilrinone', flowsheet, 'Inotropes')
 
-    #Add in phenylephrine
+    #Add in phenylephrine - actually don't as appears only to be used PRN - almost impossible for useful data to be got
 
     def aoverb(a, b):
         return a/b
     conv_2cols('Inotropes', 'interpolated_wt_kg', flowsheet, 'Inotropes_kg', aoverb)
-    fill_missing('Inotropes', flowsheet, 'Inotropes_missing')
 
+
+    #Take maximum corrected intrope to be when patients are on ECMO
+    maximum_inotropy = np.max(flowsheet['Intropes_kg'])
+    on_ECMO = flowsheet['ECMO'].isna() == False
+    flowsheet.loc[on_ECMO, 'Inotropes_kg'] = maximum_inotropy
+
+    #Only filling and interpolating Inotropy, interoplating ECMO here as don't want this to affect intropy/ viceversa
+    fill_missing('Inotropes', flowsheet, 'Inotropes_missing')
+    interpolate_cols('ECMO', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
+    interpolate_cols('Inotropes_kg', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
 
 
     ### Resp rate
@@ -1683,19 +1686,15 @@ if (os.path.exists('/mhome/damtp/q/dfs28/Project/Project_data/files/flowsheet_ne
     #print_allunique(flowsheet, 378)
 
     #567 ANAESTHESIA ECG RESPIRATION RATE
-    #print_allunique(flowsheet, 567)
     make_new_columns('ANAESTHESIA ECG RESPIRATION RATE', flowsheet, ['RR'], True)
 
     #566 ANAESTHESIA AIRWAY RESPIRATION RATE
-    #print_allunique(flowsheet, 566)
     make_new_columns('ANAESTHESIA AIRWAY RESPIRATION RATE', flowsheet, ['RR'], True)
 
     #559 RESPIRATIONS
-    #print_allunique(flowsheet, 559)
     make_new_columns('RESPIRATIONS', flowsheet, ['RR'], True)
 
     #379 For R GOSH VENT RATE OBSERVED
-    #print_allunique(flowsheet, 379)
     fill_missing('RR', flowsheet, 'RR_missing')
 
     #Need to do something about normals here too
@@ -1735,52 +1734,30 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.c
     get_relevant_cols(flowsheet, 'CRRT|dialysis|PD|HDF')
 
     #231 R GOSH CRRT FILTER TYPE
-    #print_allunique(flowsheet, 231)
     make_new_columns('R GOSH CRRT FILTER TYPE', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R GOSH CRRT FILTER TYPE', 2, 2))
 
     #232 R GOSH CRRT FF_%
-    #print_allunique(flowsheet, 232)
     make_new_columns('R GOSH CRRT FF_%', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R GOSH CRRT FF_%', 2, 2))
 
     #576 R CRRT PROGRAMMED FLUID LOSS_mL/hr
-    #print_allunique(flowsheet, 576)
     make_new_columns('R CRRT PROGRAMMED FLUID LOSS_mL/hr', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R CRRT PROGRAMMED FLUID LOSS_mL/hr', 2, 2))
 
     #577 R GOSH IP CRRT FLUID REMOVAL_mL
-    #print_allunique(flowsheet, 577)
     make_new_columns('R GOSH IP CRRT FLUID REMOVAL_mL', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R GOSH IP CRRT FLUID REMOVAL_mL', 2, 2))
 
     #578 R GOSH CRRT END OF CYCLE VOL_mL
-    #print_allunique(flowsheet, 578)
     make_new_columns('R GOSH CRRT END OF CYCLE VOL_mL', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R GOSH CRRT END OF CYCLE VOL_mL', 2, 2))
 
     #733 R GOSH PD TOTAL VOLUME_mL
-    #print_allunique(flowsheet, 733)
     make_new_columns('R GOSH PD TOTAL VOLUME_mL', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R GOSH PD TOTAL VOLUME_mL', 2, 2))
 
     #766 R GOSH UF VOLUME HD/HDF
-    #print_allunique(flowsheet, 766)
     make_new_columns('R GOSH UF VOLUME HD/HDF', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R GOSH UF VOLUME HD/HDF', 2, 2))
 
     #769 R GOSH CRRT UF
-    #print_allunique(flowsheet, 769)
     make_new_columns('R GOSH CRRT UF', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R GOSH CRRT UF', 2, 2))
     fill_missing('dialysis', flowsheet, 'dialysis_missing')
     interpolate_cols('dialysis', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
-
-    #ECMO
-    get_relevant_cols(flowsheet, 'ECMO')
-    make_new_columns('R ECMO  FLOW PROBE', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 147, 2, 2))
-    make_new_columns('R GOSH LDA ECMO LINE STATUS', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 185, 2, 2))
-    make_new_columns('R ECMO PUMP FLOW (L/MIN)_L/min', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 186, 2, 2))
-    make_new_columns('R ECMO CLAMPS CHECK', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 188, 2, 2))
-    make_new_columns('GOSH ICU ECMO HCT', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 190, 2, 2))
-    make_new_columns('R ECMO ON/OFF', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 279, 2, 2))
-    make_new_columns('R ECMO HEAT EXCHANGER WATER LEVEL', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 280, 2, 2))
-    make_new_columns('R HOURS ON ECMO', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 295, 2, 2))
-    make_new_columns('R GOSH ECMO NUMBER CIRCUITS', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 423, 2, 2))
-    fill_missing('ECMO', flowsheet, 'ECMO_missing')
-    interpolate_cols('ECMO', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
 
     ### Don't forget temperature
     get_relevant_cols(flowsheet, 'temp|deg')
