@@ -938,7 +938,7 @@ else:
 #### Now do some feature engineering
 
 
-if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv') == False):
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv') == False):
     flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv', parse_dates = ['taken_datetime'])
 
     now = datetime.now()
@@ -956,21 +956,35 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpola
     SIG = SID_calc - SID_effective
     flowsheet['Strong_ion_gap'] = SIG
 
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    print("Writing lab interpolation at", current_time)
+
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv')
+
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    print("Labs written at", current_time)
+
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv') == False):
+
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv', parse_dates = ['taken_datetime'])
+
     #Bodyweight
-    print_all(flowsheet)
-    get_relevant_cols(flowsheet, 'weight|kg|gram|wt')
+    #print_all(flowsheet)
+    #get_relevant_cols(flowsheet, 'weight|kg|gram|wt')
 
     def kg2g(new_values):
         return new_values*1000
 
     #R DRUG CALCULATION WEIGHT_grams
-    make_new_columns(176, flowsheet, ['Weight(g)'], True)
+    make_new_columns('R DRUG CALCULATION WEIGHT_grams', flowsheet, ['Weight(g)'], True)
     #WEIGHT/SCALE_grams
-    make_new_columns(856, flowsheet, ['Weight(g)'], True)
+    make_new_columns('WEIGHT/SCALE_grams', flowsheet, ['Weight(g)'], True)
     #R GOSH POST TREATMENT WEIGHT_kg
-    conv_column(517, flowsheet, 'Weight(g)', kg2g)
+    conv_column('R GOSH POST TREATMENT WEIGHT_kg', flowsheet, 'Weight(g)', kg2g)
     #R GOSH HD PRE TREATMENT WEIGHT_kg
-    conv_column(530, flowsheet, 'Weight(g)', kg2g)
+    conv_column('R GOSH HD PRE TREATMENT WEIGHT_kg', flowsheet, 'Weight(g)', kg2g)
 
     apply_wt_ht('Weight(g)', flowsheet, 'interpolated_wt_kg', scaling = 0.001)
 
