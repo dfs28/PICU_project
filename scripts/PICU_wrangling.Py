@@ -946,7 +946,15 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv
     print("Interpolating labs at", current_time)
 
     #Interpolate labs maximum 4 days
-    for i in lab_cols[2:-1]:
+    lab_vars = ['ALT', 'Albumin', 'AlkPhos', 'AST', 'Aspartate', 
+                'Amylase', 'APTT', 'Anion_gap', 'Base_excess', 'Basophils', 
+                'Bicarb', 'pH', 'Blood_culture', 'CRP', 'Ca2+', 'Cl', 'Eosinophils', 
+                'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT%', 'HCT', 'INR', 
+                'Lactate', 'Lymphs', 'Mg', 'Monocytes', 'Neuts', 'P50', 'PaCO2', 
+                'PcCO2', 'PmCO2', 'PaO2', 'PcO2', 'PmO2', 'PO2', 'PvCO2', 
+                'PcO2', 'Phos', 'Plts', 'K+', 'PT', 'Retics', 'Na+', 'TT', 'Bili', 'WCC']
+
+    for i in lab_vars:
         interpolate_cols(i, flowsheet, 'pad', how_far = 5760, limit_direction = 'forward', fill = fill_median)
 
     #Calculate strong ion gap
@@ -966,9 +974,35 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv
     current_time = now.strftime("%H:%M:%S")
     print("Labs written at", current_time)
 
+
+
+### Get demographics
+if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv') == False:
+    print('Reading in flowsheet')
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv', parse_dates = ['taken_datetime'])
+
+    print('Applying demographics')
+    apply_demographic('birth_date', demographics, flowsheet, 'Age_yrs')
+    flowsheet['time_to_death'] = np.timedelta64(70, 'Y')
+    apply_demographic('death_date', demographics, flowsheet, 'time_to_death')
+    apply_demographic('deceased_flag', demographics, flowsheet, 'died', False)
+    apply_demographic('sex', demographics, flowsheet, 'sex', False)
+    apply_demographic('ethnicity_name', demographics, flowsheet, 'ethnicity', False)
+
+    print('Saving applied demographics')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv')
+
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    print("Demographics saved at", current_time)
+else:
+    print('Demographics already applied')
+
+
+
 if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv') == False):
 
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv', parse_dates = ['taken_datetime'])
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv', parse_dates = ['taken_datetime'])
 
     #Bodyweight
     #print_all(flowsheet)
@@ -1262,19 +1296,19 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpola
     cor_FiO2('R GOSH AIRVO OXYGEN %_%', flowsheet, 'FiO2')
 
     #(492, 'R GOSH ASTRAL PEEP_cm H2O')
-    make_new_columns('R GOSH ASTRAL PEEP_cm H2O', flowsheet, ['PEEP'], True)
+    make_new_columns('R GOSH ASTRAL PEEP_cm H2O', flowsheet, ['EPAP'], True)
 
     #(493, 'R GOSH PEEP_cmH2O')
-    make_new_columns('R GOSH PEEP_cmH2O', flowsheet, ['PEEP'], True)
+    make_new_columns('R GOSH PEEP_cmH2O', flowsheet, ['EPAP'], True)
 
     #(494, 'R VENT PEEP_cm H2O')
-    make_new_columns('R VENT PEEP_cm H2O', flowsheet, ['PEEP'], True)
+    make_new_columns('R VENT PEEP_cm H2O', flowsheet, ['EPAP'], True)
 
     #(496, 'R GOSH IP VENT PEEP SETTING_cm H2O')
-    make_new_columns('R GOSH IP VENT PEEP SETTING_cm H2O', flowsheet, ['PEEP'], True)
+    make_new_columns('R GOSH IP VENT PEEP SETTING_cm H2O', flowsheet, ['EPAP'], True)
 
     #(497, 'R AN VENT PEEP_cm H20')
-    make_new_columns('R AN VENT PEEP_cm H20', flowsheet, ['PEEP'], True)
+    make_new_columns('R AN VENT PEEP_cm H20', flowsheet, ['EPAP'], True)
 
     #Now use some columns to update others
     make_new_columns('ETCO2', flowsheet, ['Ventilation'], newcol1 = make_allnonNa(flowsheet,  'ETCO2',  4, 4))
@@ -1291,7 +1325,6 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpola
     fill_missing('IPAP', flowsheet, 'IPAP_missing')
     fill_missing('EPAP', flowsheet, 'EPAP_missing')
     fill_missing('FiO2', flowsheet, 'FiO2_missing')
-    fill_missing('PEEP', flowsheet, 'PEEP_missing')
     fill_missing('HFO', flowsheet, 'HFO_missing')
     fill_missing('Tracheostomy', flowsheet, 'Tracheostomy_missing')
     fill_missing('Ventilation(ml)', flowsheet, 'Ventilation(ml)_missing')
@@ -1304,7 +1337,6 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpola
     interpolate_cols('IPAP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
     interpolate_cols('EPAP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
     interpolate_cols('FiO2', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0.21)
-    interpolate_cols('PEEP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
     interpolate_cols('HFO', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
     interpolate_cols('Tracheostomy', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
     interpolate_cols('Ventilation(ml)', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
@@ -1774,36 +1806,13 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
 else:
     print('Interpolation already nearly done')
 
-### Get demographics
-if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv') == False:
-    print('Reading in flowsheet')
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv', parse_dates = ['taken_datetime'])
-
-    print('Applying demographics')
-    apply_demographic('birth_date', demographics, flowsheet, 'Age_yrs')
-    flowsheet['time_to_death'] = np.timedelta64(70, 'Y')
-    apply_demographic('death_date', demographics, flowsheet, 'time_to_death')
-    apply_demographic('deceased_flag', demographics, flowsheet, 'died', False)
-    apply_demographic('sex', demographics, flowsheet, 'sex', False)
-    apply_demographic('ethnicity_name', demographics, flowsheet, 'ethnicity', False)
-
-    print('Saving applied demographics')
-    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv')
-
-    now = datetime.now()
-    current_time = now.strftime("%H:%M:%S")
-    print("Demographics saved at", current_time)
-else:
-    print('Demographics already applied')
-
-
 
 
 
 ### Ecmo and dialysis
 
 if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv') == False:
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv', parse_dates = ['taken_datetime'])
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv', parse_dates = ['taken_datetime'])
 
     #Dialysis
     get_relevant_cols(flowsheet, 'CRRT|dialysis|PD|HDF')
