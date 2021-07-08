@@ -391,26 +391,24 @@ explainer = shap.DeepExplainer(model_m, train_array3d)
 
 #Now work through all of the samples to take an average shapley value for each point:
 shap_values = explainer.shap_values(testing_array3d[:, :, :])
-ave_shap_values = np.average
+#Shap values gives an value for contribution to each of the outputs, so the shap_values output gives (n_outputs, z_dim, y_dim, x_dim) shape 
+ave_shap_values = np.average(shap_values, axis = 1)
 
 #Now plot some shapley values
-fig, axs = plt.subplots(8, 2)
-for i in range(16)
-axs[0, 0].plot(x, y)
-axs[0, 0].set_title('Axis [0, 0]')
-axs[0, 1].plot(x, y, 'tab:orange')
-axs[0, 1].set_title('Axis [0, 1]')
-axs[1, 0].plot(x, -y, 'tab:green')
-axs[1, 0].set_title('Axis [1, 0]')
-axs[1, 1].plot(x, -y, 'tab:red')
-axs[1, 1].set_title('Axis [1, 1]')
+fig, axs = plt.subplots(8, 2, figsize = (20, 13))
+grid = plt.GridSpec(2, 2, wspace=0.2, hspace=0.5)
+
+for i in range(16):
+    axs[i % 8, i // 8].plot(ave_shap_values[0, i, :])
+    axs[i % 8, i // 8].plot(ave_shap_values[1, i, :])
+    axs[i % 8, i // 8].plot(ave_shap_values[2, i, :])
+    axs[i % 8, i // 8].title.set_text(cols[i])
+    axs[i % 8, i // 8].legend(['Discharge <2d', 'Discharge 2-7d', 'Discharge >7d'])
 
 for ax in axs.flat:
-    ax.set(xlabel='x-label', ylabel='y-label')
+    ax.set(xlabel='Filter position', ylabel='importance')
 
-# Hide x labels and tick labels for top plots and y ticks for right plots.
-for ax in axs.flat:
-    ax.label_outer()
+plt.savefig('Project/PICU_project/figs/PICU/Network_training/Practice_plots/Plotting_shap_values.png')
 
 #### Now apply the encoding to some digits
 # Note that we take them from the *test* set

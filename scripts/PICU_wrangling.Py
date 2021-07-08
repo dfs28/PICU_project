@@ -1123,7 +1123,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpola
     make_new_columns('R GOSH TRACHE CUFF', flowsheet, ['Tracheostomy'], newcol1 = trache136)
 
     #198, 'R GOSH ASTRAL EPAP_cm H2O') - Astral is NIV
-    unique_vent198 = flowsheet.iloc[:, 'R GOSH ASTRAL EPAP_cm H2O'].unique()
+    unique_vent198 = flowsheet.loc[:, 'R GOSH ASTRAL EPAP_cm H2O'].unique()
     vent198 = [[], [], unique_vent198[range(1, len(unique_vent198))].tolist(), []]
     make_new_columns('R GOSH ASTRAL EPAP_cm H2O', flowsheet, ['Ventilation'], newcol1 = vent198)
     make_new_columns('R GOSH ASTRAL EPAP_cm H2O', flowsheet, ['EPAP'], True)
@@ -1132,7 +1132,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpola
     make_new_columns('R GOSH EPAP', flowsheet, ['EPAP'], True)
 
     #200, 'R GOSH NIPPY EPAP_cmH2O
-    unique_vent200 = flowsheet.iloc[:, 'R GOSH NIPPY EPAP_cmH2O'].unique()
+    unique_vent200 = flowsheet.loc[:, 'R GOSH NIPPY EPAP_cmH2O'].unique()
     vent200 = [[], [], unique_vent200[range(1, len(unique_vent200))].tolist(), []]
     make_new_columns('R GOSH NIPPY EPAP_cmH2O', flowsheet, ['Ventilation'], newcol1 = vent200)
     make_new_columns(200, flowsheet, ['EPAP'], True)
@@ -1147,22 +1147,22 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpola
     make_new_columns('R IP VENT ALARM ETCO2/TCM MAX_mmHg', flowsheet, ['ETCO2'], True)
 
     #210, 'R ETT TO LIP_cm
-    unique_vent210 = flowsheet.iloc[:, 'R ETT TO LIP_cm'].unique()
+    unique_vent210 = flowsheet.loc[:, 'R ETT TO LIP_cm'].unique()
     vent210 = [[], [], [], unique_vent210[range(1, len(unique_vent210))].tolist()]
     make_new_columns('R ETT TO LIP_cm', flowsheet, ['Ventilation'], newcol1 = vent210)
 
     #211, 'R ETT TO NOSE_cm'
-    unique_vent211 = flowsheet.iloc[:, 'R ETT TO NOSE_cm'].unique()
+    unique_vent211 = flowsheet.loc[:, 'R ETT TO NOSE_cm'].unique()
     vent211 = [[], [], [], unique_vent211[range(1, len(unique_vent211))].tolist()]
     make_new_columns('R ETT TO NOSE_cm', flowsheet, ['Ventilation'], newcol1 = vent211)
 
     #214, 'R AN AGENTS DESFLURANE EXPIRED_%'
-    unique_vent214 = flowsheet.iloc[:, 'R AN AGENTS DESFLURANE EXPIRED_%'].unique()
+    unique_vent214 = flowsheet.loc[:, 'R AN AGENTS DESFLURANE EXPIRED_%'].unique()
     vent214 = [[], [], [], unique_vent214[range(1, len(unique_vent214))].tolist()]
     make_new_columns('R AN AGENTS DESFLURANE EXPIRED_%', flowsheet, ['Ventilation'], newcol1 = vent214)
 
     #215, 'R AN AGENTS ISOFLURANE EXPIRED_%'
-    unique_vent215 = flowsheet.iloc[:, 'R AN AGENTS ISOFLURANE EXPIRED_%'].unique()
+    unique_vent215 = flowsheet.loc[:, 'R AN AGENTS ISOFLURANE EXPIRED_%'].unique()
     vent215 = [[], [], [], unique_vent215[range(1, len(unique_vent215))].tolist()]
     make_new_columns('R AN AGENTS ISOFLURANE EXPIRED_%', flowsheet, ['Ventilation'], newcol1 = vent215)
 
