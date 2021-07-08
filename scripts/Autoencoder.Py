@@ -10,6 +10,7 @@ import math
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import seaborn as sns
+import shap
 
 #Read in the data
 flowsheet = pd.read_csv('~/Project/Project_data/files/flowsheet_output.csv', parse_dates = ['taken_datetime'])
@@ -93,9 +94,10 @@ def make_3d_array(array, length, cols):
     x_dim = length
     y_dim = np.min(shape)
     array_3d = np.empty((len(to_use), y_dim, x_dim))
+    array_2d = np.empty((len(to_use), y_dim))
 
     #Outcomes
-    outcomes = np.zeros((len(to_use), 5))
+    outcomes = np.zeros((len(to_use), 10))
     pt_slices = list()
 
     for position, i in enumerate(to_use):
@@ -103,33 +105,54 @@ def make_3d_array(array, length, cols):
         end_position = (i + 1)*length
         temp_array = array_use[start_position:end_position, :]
         array_3d[position, :, :] = temp_array.transpose()
-
-        #Build the outcomes
-        #Death
-        if array.loc[end_position, 'died'] == 'Y':
-            outcomes[position, 0] = 1
         
-        #Time to death less than 48h
+        ##Build the outcomes
+        #Make sure you can see which patients these are coming from
+        patient_id = np.where(array.loc[end_position, 'project_id'] == unique_patients)[0]
+        project_id = array.loc[end_position, 'project_id']
+        outcomes[position, 0] = patient_id[0]
+
+        #Age of the patient
+        outcomes[position, 1] = array.loc[end_position, 'Age_yrs']
+        
+        #Time to death as triplicate value
         if array.loc[end_position, 'time_to_death'] <= 2/365:
-            outcomes[position, 1] = 1
+            outcomes[position, 2] = 1
+        elif array.loc[end_position, 'died'] == 'Y':
+            outcomes[position, 3] = 1
+        else: 
+            outcomes[position, 4] = 1
+
+        #Length of stay as triplicate
+        end_of_section = array.loc[end_position, 'taken_datetime']
+        all_dates = array.loc[array['project_id'] == project_id, 'taken_datetime']
+        discharge_date = all_dates[all_dates.index[-1]]
+        time_to_discharge = discharge_date - end_of_section
+
+        #Now assign depending on how soon:
+        if time_to_discharge < np.timedelta64(2, 'D'):
+            outcomes[position, 5] = 1
+        elif time_to_discharge < np.timedelta64(7, 'D'):
+            outcomes[position, 6] = 1
+        else:
+            outcomes[position, 7] = 1
 
         #Time to death as outcome (if doesn't die then 70yrs to death)
         if np.isnan(array.loc[end_position, 'time_to_death']):
-            outcomes[position, 2] = 70
+            outcomes[position, 8] = 70
         else:
-            outcomes[position, 2] = array.loc[end_position, 'time_to_death']
-        
-        #Make sure you can see which patients these are coming from
-        patient_id = np.where(array.loc[end_position, 'project_id'] == unique_patients)[0]
-        outcomes[position, 3] = patient_id[0]
+            outcomes[position, 9] = array.loc[end_position, 'time_to_death']
 
-        #Age of the patient
-        outcomes[position, 4] = array.loc[end_position, 'Age_yrs']
+        ##Now get pointwise variables
+        medians = [np.median(temp_array[:, i]) for i in range(np.shape(temp_array)[1])]
+        array_2d[position, :] = np.array(medians)
+        
+
     
     na_loc = np.isnan(array_3d)
     array_3d[na_loc] = 0
 
-    return array_3d, outcomes, slicesPerPatient
+    return array_3d, array_2d, outcomes, slicesPerPatient
 
 def test_trainsplit(array, split):
     """
@@ -161,43 +184,72 @@ def test_trainsplit(array, split):
 
 
 length = 60
-array3d, outcomes, slicesPerPatient = make_3d_array(flowsheet, length, cols)
-split_array = test_trainsplit(array3d, np.array([70, 15, 15]))
-split_outcomes = test_trainsplit(outcomes, np.array([70, 15, 15]))
-train_array = split_array[0]
-train_outcomes = split_outcomes[0]
-testing_array = split_array[1]
-testing_outcomes = split_outcomes[1]
-input_shape = train_array.shape
-input_timeseries = keras.Input(shape = input_shape[1:])
+array3d, array2d, outcomes, slicesPerPatient = make_3d_array(flowsheet, length, cols)
 
-#Now make 1d conv net
+"""
+Plan:
+Leave one out cross validation if possible
+Code it up with grid search - not sure if it is possible to change architecture or just hyperparameters
+If doing LOOCV could then calculate a prediction interval (I suppose could repeat this a few times to get prediction interval)
+Want LSTM, 1d convnet, 2d convnet with and without multihead
+Should probably use more than one loss function/ report more than one loss function
+Make use of callbacks - both the early stopping one and the reduce learning rate one
+For logistic regression should include median value and variability for each of the time series things
+Unfortunately can't do skfda due to implementation issue
+Could do xgboost instead?
+Shapley values - looks like these aren't possible with functional API at present - could build a simplified one head sequential model to test importance?
+"""
+
+
+#Split up testing and outcomes
+split_array3d = test_trainsplit(array3d, np.array([70, 15, 15]))
+split_array2d = test_trainsplit(array2d, np.array([70, 15, 15]))
+split_outcomes = test_trainsplit(outcomes, np.array([70, 15, 15]))
+train_array3d = split_array3d[0]
+train_array2d = split_array2d[0]
+train_outcomes = split_outcomes[0]
+testing_array3d = split_array3d[1]
+testing_array2d = split_array2d[1]
+testing_outcomes = split_outcomes[1]
+
+#Set the input shape
+input_shape3d = train_array3d.shape
+input_timeseries = keras.Input(shape = input_shape3d[1:])
+input_flat = keras.Input(shape = train_array2d.shape[1:])
+
+####Now make 1d conv net
 # This is the encoder - set the shape to be the shape of the timeseries data
 x = layers.Conv1D(30, 16, activation='relu', padding = 'same')(input_timeseries)
 x = layers.Conv1D(15, 16, activation='relu', padding = 'same')(x)
 encoded = layers.Conv1D(8, 16, activation='relu', padding = 'same')(x)
 
-#Now make the docoder
-x = layers.Conv1D(15, 16, activation = 'relu', padding = 'same')(encoded)
-x = layers.Conv1D(30, 16, activation= 'relu', padding = 'same')(x)
-decoded = layers.Conv1D(60, 16, activation = 'sigmoid', padding = 'same')(x)
+##Now make the other head with input
+y = layers.Dense(8, activation = 'relu')(input_flat)
 
-# This model maps an input to its encoded representation
-encoder = keras.Model(input_timeseries, encoded)
+#Now make the other head
+flattened = layers.Flatten()(encoded)
+concatted = layers.Concatenate()([y, flattened])
+dense1 = layers.Dense(32, activation = 'relu', use_bias = True)(concatted)
+dense2 = layers.Dense(8, activation = 'relu', use_bias = True)(dense1)
 
-autoencoder = keras.Model(input_timeseries, decoded)
-autoencoder.compile(optimizer='adam', loss='binary_crossentropy',  metrics=['accuracy'])
+#Make this a multihead output
+death_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
+time_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
 
-history = autoencoder.fit(train_array, train_array,
-                epochs=100,
-                batch_size=81,
-                shuffle=True,
-                validation_data=(testing_array, testing_array))
+#This is the full model with death and LOS as the outcome
+full_model = keras.Model([input_timeseries, input_flat], [death_head, time_head])
+full_model.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
 
+#Now fit the outcome head having trained the autoencoder
+full_model_history = full_model.fit([train_array3d, train_array2d], [train_outcomes[:, 5:8], train_outcomes[:, 2:5]], 
+                                    epochs = 10,
+                                    batch_size = 100,
+                                    shuffle = True, 
+                                    validation_data = ([testing_array3d, testing_array2d], [testing_outcomes[:, 5:8], testing_outcomes[:, 2:5]]))
 
 #Plot the history
 # list all data in history
-print(history.history.keys())
+print(full_model_history.history.keys())
 
 fig, (ax1, ax2) = plt.subplots(1, 2)
 fig.suptitle('1D Convolutional Autoencoder')
@@ -222,12 +274,59 @@ for ax in fig.get_axes():
 #Save it
 plt.savefig('Project/PICU_project/figs/PICU/Network_training/Practice_plots/3layer1Dautoencoder.png')
 
+### Consider some of the convolutional filters - I think there is something here to talk about but might have to leave this to the end
+filters, biases = full_model.layers[1].get_weights()
+fig, (ax1, ax2) = plt.subplots(2, 1)
+fig.suptitle('Convolutional Filters')
+ax1.plot(filters[:, 1, 1])
+ax1.set_title('Filter 1')
+ax1.set(xlabel = 'unit', ylabel = 'Value')
+
+ax1.plot(filters[:, 2, 1])
+ax1.set_title('Filter 2')
+ax1.set(xlabel = 'unit', ylabel = 'Value')
+
+plt.savefig('Project/PICU_project/figs/PICU/Network_training/Practice_plots/2filters.png')
 
 
-## Now train the output from the autoencoder onto the outcomes
-x = layers.Conv1D(15, 16, activation = 'relu', padding = 'same')(encoded)
-x = layers.Conv1D(30, 16, activation= 'relu', padding = 'same')(x)
-decoded = layers.Conv1D(60, 16, activation = 'sigmoid', padding = 'same')(x)
+
+encoded_outcomes = full_model.predict([testing_array3d, testing_array2d])
+
+
+## Now build a 2d convnet
+array_image = np.reshape(array3d, array3d.shape[0])
+input_time_image = 
+
+# This is the encoder - set the shape to be the shape of the timeseries data
+x = layers.Conv2D(2, 3, activation='relu', padding = 'same')(input_timeseries)
+x = layers.Conv2D(15, 16, activation='relu', padding = 'same')(x)
+encoded = layers.Conv2D(8, 16, activation='relu', padding = 'same')(x)
+
+##Now make the other head with input
+y = layers.Dense(8, activation = 'relu')(input_flat)
+
+#Now make the other head
+flattened = layers.Flatten()(encoded)
+concatted = layers.Concatenate()([y, flattened])
+dense1 = layers.Dense(32, activation = 'relu', use_bias = True)(concatted)
+dense2 = layers.Dense(8, activation = 'relu', use_bias = True)(dense1)
+
+#Make this a multihead output
+death_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
+time_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
+
+#This is the full model with death and LOS as the outcome
+full_model = keras.Model([input_timeseries, input_flat], [death_head, time_head])
+full_model.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
+
+#Now fit the outcome head having trained the autoencoder
+full_model_history = full_model.fit([train_array3d, train_array2d], [train_outcomes[:, 5:8], train_outcomes[:, 2:5]], 
+                                    epochs = 10,
+                                    batch_size = 100,
+                                    shuffle = True, 
+                                    validation_data = ([testing_array3d, testing_array2d], [testing_outcomes[:, 5:8], testing_outcomes[:, 2:5]]))
+
+
 
 """
 # This is the size of our encoded representations
@@ -267,6 +366,51 @@ print(x_test.shape)
 """
 
 #Format the test data
+
+### Calculate shapley values - have to build a smaller sequential model for this
+
+model_m = keras.Sequential()
+model_m.add(layers.Conv1D(30, 16, activation='relu', padding = 'same', input_shape=train_array3d.shape[1:]))
+model_m.add(layers.Conv1D(15, 16, activation='relu', padding = 'same',))
+model_m.add(layers.MaxPooling1D(2))
+model_m.add(layers.Conv1D(15, 4, activation='relu', padding = 'same',))
+model_m.add(layers.Flatten())
+model_m.add(layers.Dense(3, activation='softmax'))
+print(model_m.summary())
+
+model_m.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
+
+#Now fit the simplified 1d convnet
+model_m_history = model_m.fit(train_array3d, train_outcomes[:, 5:8], 
+                                    epochs = 10,
+                                    batch_size = 100,
+                                    shuffle = True, 
+                                    validation_data = (testing_array3d, testing_outcomes[:, 5:8]))
+
+explainer = shap.DeepExplainer(model_m, train_array3d)
+
+#Now work through all of the samples to take an average shapley value for each point:
+shap_values = explainer.shap_values(testing_array3d[:, :, :])
+ave_shap_values = np.average
+
+#Now plot some shapley values
+fig, axs = plt.subplots(8, 2)
+for i in range(16)
+axs[0, 0].plot(x, y)
+axs[0, 0].set_title('Axis [0, 0]')
+axs[0, 1].plot(x, y, 'tab:orange')
+axs[0, 1].set_title('Axis [0, 1]')
+axs[1, 0].plot(x, -y, 'tab:green')
+axs[1, 0].set_title('Axis [1, 0]')
+axs[1, 1].plot(x, -y, 'tab:red')
+axs[1, 1].set_title('Axis [1, 1]')
+
+for ax in axs.flat:
+    ax.set(xlabel='x-label', ylabel='y-label')
+
+# Hide x labels and tick labels for top plots and y ticks for right plots.
+for ax in axs.flat:
+    ax.label_outer()
 
 #### Now apply the encoding to some digits
 # Note that we take them from the *test* set
