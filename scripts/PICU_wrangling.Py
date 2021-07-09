@@ -1404,17 +1404,18 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     strings = [i for i, j in enumerate(flowsheet['MAP']) if not slash.match(str(j)) == None]
     strings = np.array(strings)
 
-    #Find the location where sysbp and diabp are missing but map not
-    diaNAs = np.where(flowsheet['DiaBP'].isna())
-    sysNAs = np.where(flowsheet['SysBP'].isna())
-    BP_NAs = np.union1d(diaNAs, sysNAs)
-    MAPnotBP = np.intersect1d(BP_NAs, strings)
-    #Can see actually none here that are relevant
+    if np.shape(strings)[0] > 0:
+        #Find the location where sysbp and diabp are missing but map not
+        diaNAs = np.where(flowsheet['DiaBP'].isna())
+        sysNAs = np.where(flowsheet['SysBP'].isna())
+        BP_NAs = np.union1d(diaNAs, sysNAs)
+        MAPnotBP = np.intersect1d(BP_NAs, strings)
+        #Can see actually none here that are relevant
 
-    #Now just fix the problem for the MAPs that are strings
-    newBPs = flowsheet.loc[strings, 'MAP'].str.split("/", n = 1, expand = True)
-    newBPs = newBPs.astype('float')
-    flowsheet.loc[strings, 'MAP'] = newBPs.loc[:, 0]*(1/3) + newBPs.loc[:, 1]*(2/3)
+        #Now just fix the problem for the MAPs that are strings
+        newBPs = flowsheet.loc[strings, 'MAP'].str.split("/", n = 1, expand = True)
+        newBPs = newBPs.astype('float')
+        flowsheet.loc[strings, 'MAP'] = newBPs.loc[:, 0]*(1/3) + newBPs.loc[:, 1]*(2/3)
 
     #Fill in where missing 
     fill_missing('SysBP', flowsheet, 'SysBP_missing')
@@ -1604,7 +1605,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     get_relevant_cols(flowsheet, 'input|intake|fluid|output|nappy')
     get_relevant_cols(flowsheet, 'loss')
     flowsheet['input'] = 0
-    flowhseet['output'] = 0
+    flowsheet['output'] = 0
 
     #R DRY NAPPY WEIGHT_g 182
     #R NAPPY WITH STOOL WEIGHT_g

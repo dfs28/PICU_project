@@ -1,9 +1,9 @@
 ### Sample bit of code to practice making autoencoder
 
 # Setup
-import keras
+import tensorflow as tf
+import keras 
 from keras import layers
-from keras.datasets import mnist
 import numpy as np
 import pandas as pd
 import math
@@ -191,13 +191,15 @@ Plan:
 Leave one out cross validation if possible
 Code it up with grid search - not sure if it is possible to change architecture or just hyperparameters
 If doing LOOCV could then calculate a prediction interval (I suppose could repeat this a few times to get prediction interval)
+    If doing prediction interval otherwise can just repeat the final model a lot of times
 Want LSTM, 1d convnet, 2d convnet with and without multihead
 Should probably use more than one loss function/ report more than one loss function
 Make use of callbacks - both the early stopping one and the reduce learning rate one
 For logistic regression should include median value and variability for each of the time series things
-Unfortunately can't do skfda due to implementation issue
+Unfortunately can't do skfda due to implementation issue - is there another way I could do this - fit splines and use coefficients?
 Could do xgboost instead?
 Shapley values - looks like these aren't possible with functional API at present - could build a simplified one head sequential model to test importance?
+Maybe change outcomes to binary for simplicity of understanding? Then can do the p/1-p logit link thing
 """
 
 
@@ -293,19 +295,75 @@ plt.savefig('Project/PICU_project/figs/PICU/Network_training/Practice_plots/2fil
 encoded_outcomes = full_model.predict([testing_array3d, testing_array2d])
 
 
-## Now build a 2d convnet
-array_image = np.reshape(array3d, array3d.shape[0])
-input_time_image = 
+
+
+## Now build LSTM
+####Now make 1d conv net
+input_shape3d = train_array3d.shape
+input_timeseries = keras.Input(shape = input_shape3d[1:])
+input_flat = keras.Input(shape = train_array2d.shape[1:])
 
 # This is the encoder - set the shape to be the shape of the timeseries data
-x = layers.Conv2D(2, 3, activation='relu', padding = 'same')(input_timeseries)
-x = layers.Conv2D(15, 16, activation='relu', padding = 'same')(x)
-encoded = layers.Conv2D(8, 16, activation='relu', padding = 'same')(x)
+x = layers.LSTM(30)(input_timeseries)
 
 ##Now make the other head with input
 y = layers.Dense(8, activation = 'relu')(input_flat)
 
 #Now make the other head
+flattened = layers.Flatten()(x)
+concatted = layers.Concatenate()([y, flattened])
+dense1 = layers.Dense(32, activation = 'relu', use_bias = True)(concatted)
+dense2 = layers.Dense(8, activation = 'relu', use_bias = True)(dense1)
+
+#Make this a multihead output
+death_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
+time_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
+
+#This is the full model with death and LOS as the outcome
+full_model_LSTM = keras.Model([input_timeseries, input_flat], [death_head, time_head])
+full_model_LSTM.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
+
+#Now fit the outcome head having trained the autoencoder
+full_model_LSTM = full_model_LSTM.fit([train_array3d, train_array2d], [train_outcomes[:, 5:8], train_outcomes[:, 2:5]], 
+                                    epochs = 10,
+                                    batch_size = 100,
+                                    shuffle = True, 
+                                    validation_data = ([testing_array3d, testing_array2d], [testing_outcomes[:, 5:8], testing_outcomes[:, 2:5]]))
+
+
+
+
+
+
+
+
+## Now build a 2d convnet
+array_image = np.reshape(array3d, (array3d.shape[0], array3d.shape[1], array3d.shape[2], 1))
+input_time_image = keras.Input(shape = array_image.shape[1:])
+input_flat = keras.Input(shape = train_array2d.shape[1:])
+split_image = test_trainsplit(array_image, np.array([70, 15, 15]))
+split_array2d = test_trainsplit(array2d, np.array([70, 15, 15]))
+split_outcomes = test_trainsplit(outcomes, np.array([70, 15, 15]))
+train_image = split_image[0]
+train_array2d = split_array2d[0]
+train_outcomes = split_outcomes[0]
+testing_image = split_image[1]
+testing_array2d = split_array2d[1]
+testing_outcomes = split_outcomes[1]
+
+# Convolutional input
+x = layers.Conv2D(16, (3, 3), activation='relu', padding='same')(input_time_image)
+x = layers.MaxPooling2D((2, 2), padding='same')(x)
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+x = layers.MaxPooling2D((2, 2), padding='same')(x)
+x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(x)
+encoded = layers.MaxPooling2D((2, 2), padding='same')(x)
+
+##Now make the other input
+y = layers.Dense(8, activation = 'relu')(input_flat)
+y = layers.Dense(4, activation = 'relu')(y)
+
+#Now combine and make 2 head
 flattened = layers.Flatten()(encoded)
 concatted = layers.Concatenate()([y, flattened])
 dense1 = layers.Dense(32, activation = 'relu', use_bias = True)(concatted)
@@ -316,15 +374,15 @@ death_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
 time_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
 
 #This is the full model with death and LOS as the outcome
-full_model = keras.Model([input_timeseries, input_flat], [death_head, time_head])
-full_model.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
+full_model_2d = keras.Model([input_time_image, input_flat], [death_head, time_head])
+full_model_2d.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
 
 #Now fit the outcome head having trained the autoencoder
-full_model_history = full_model.fit([train_array3d, train_array2d], [train_outcomes[:, 5:8], train_outcomes[:, 2:5]], 
+full_model_2d_history = full_model_2d.fit([train_image, train_array2d], [train_outcomes[:, 5:8], train_outcomes[:, 2:5]], 
                                     epochs = 10,
                                     batch_size = 100,
                                     shuffle = True, 
-                                    validation_data = ([testing_array3d, testing_array2d], [testing_outcomes[:, 5:8], testing_outcomes[:, 2:5]]))
+                                    validation_data = ([testing_image, testing_array2d], [testing_outcomes[:, 5:8], testing_outcomes[:, 2:5]]))
 
 
 
@@ -367,7 +425,14 @@ print(x_test.shape)
 
 #Format the test data
 
+
+
 ### Calculate shapley values - have to build a smaller sequential model for this
+#Although have averaged across all here should probably split by outcome - the contributions of different things to different points by outcome
+#Then if I do the 2d one I can get 'images' to look at which might make more sense
+#Could actually consider representing all of the lines as a heatmap of some description anyway? Then I effectively have 2x2 or 3x2 heatmaps
+# this should also normalise for input so ones that are more important appear more important
+# When talk about this will have to talk about limitations of shapley values
 
 model_m = keras.Sequential()
 model_m.add(layers.Conv1D(30, 16, activation='relu', padding = 'same', input_shape=train_array3d.shape[1:]))
@@ -410,10 +475,51 @@ for ax in axs.flat:
 
 plt.savefig('Project/PICU_project/figs/PICU/Network_training/Practice_plots/Plotting_shap_values.png')
 
+
+#Now get shapley values for 2d cnn
+model_2dCNN = tf.keras.Sequential()
+model_2dCNN.add(tf.keras.layers.Conv2D(16, (3, 3), activation='relu', padding='same',  input_shape=train_image.shape[1:]))
+model_2dCNN.add(tf.keras.layers.MaxPooling2D((2, 2), padding='same'))
+model_2dCNN.add(tf.keras.layers.Conv2D(8, (3, 3), activation='relu', padding='same'))
+model_2dCNN.add(tf.keras.layers.MaxPooling2D((2, 2), padding='same'))
+model_2dCNN.add(tf.keras.layers.Conv2D(8, (3, 3), activation='relu', padding='same'))
+model_2dCNN.add(tf.keras.layers.MaxPooling2D((2, 2), padding='same'))
+model_2dCNN.add(tf.keras.layers.Flatten())
+model_2dCNN.add(tf.keras.layers.Dense(32, activation = 'relu', use_bias = True))
+model_2dCNN.add(tf.keras.layers.Dense(8, activation = 'relu', use_bias = True))
+model_2dCNN.add(tf.keras.layers.Dense(3, activation = 'softmax', use_bias = True))
+model_2dCNN.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
+
+#Now fit the simplified 1d convnet
+model_2dCNN_history = model_2dCNN.fit(train_image, train_outcomes[:, 5:8], 
+                                    epochs =20,
+                                    batch_size = 100,
+                                    shuffle = True, 
+                                    validation_data = (testing_image, testing_outcomes[:, 5:8]))
+
+
+
+#Now get some shapley values
+explainer = shap.DeepExplainer(model_2dCNN, train_image)
+
+#Now work through all of the samples to take an average shapley value for each point:
+shap_values = explainer.shap_values(testing_image[0:100, :, :])
+#Shap values gives an value for contribution to each of the outputs, so the shap_values output gives (n_outputs, z_dim, y_dim, x_dim) shape 
+ave_shap_values = np.average(shap_values, axis = 1)
+
+
+
 #### Now apply the encoding to some digits
 # Note that we take them from the *test* set
 encoded_imgs = encoder.predict(testing_array)
 flattened_encoded = np.reshape(encoded_imgs, (len(testing_array), 8*16))
+
+
+
+
+
+
+
 
 
 
