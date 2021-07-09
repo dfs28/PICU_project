@@ -506,8 +506,18 @@ explainer = shap.DeepExplainer(model_2dCNN, train_image)
 shap_values = explainer.shap_values(testing_image[0:100, :, :])
 #Shap values gives an value for contribution to each of the outputs, so the shap_values output gives (n_outputs, z_dim, y_dim, x_dim) shape 
 ave_shap_values = np.average(shap_values, axis = 1)
+shap_shape = np.shape(ave_shap_values)
+ave_shap_values = ave_shap_values.reshape(shap_shape[:-1])
 
+#Now plot them as 3 images - should change this to 9 but would need to change inputs
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize = (20, 13))
+ax1.imshow(ave_shap_values[0, :, :])
+for i, j in enumerate(cols):
+    ax1.text(-5, i, , fontdict=None, **kwargs)
+ax2.imshow(ave_shap_values[1, :, :])
+ax3.imshow(ave_shap_values[2, :, :])
 
+plt.savefig('Project/PICU_project/figs/PICU/Network_training/Practice_plots/Plotting_2d_shap_values.png')
 
 #### Now apply the encoding to some digits
 # Note that we take them from the *test* set
