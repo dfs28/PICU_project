@@ -115,7 +115,7 @@ def make_3d_array(array, length, cols):
         #Age of the patient
         outcomes[position, 1] = array.loc[end_position, 'Age_yrs']
         
-        #Time to death as triplicate value
+        #Time to death as triplicate value - probably can't assume that death is within this admission?
         if array.loc[end_position, 'time_to_death'] <= 2/365:
             outcomes[position, 2] = 1
         elif array.loc[end_position, 'died'] == 'Y':
@@ -512,10 +512,14 @@ ave_shap_values = ave_shap_values.reshape(shap_shape[:-1])
 #Now plot them as 3 images - should change this to 9 but would need to change inputs
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize = (20, 13))
 ax1.imshow(ave_shap_values[0, :, :])
-for i, j in enumerate(cols):
-    ax1.text(-5, i, , fontdict=None, **kwargs)
 ax2.imshow(ave_shap_values[1, :, :])
 ax3.imshow(ave_shap_values[2, :, :])
+
+#I think the naming is upside down but not sure how to fix this
+for i, j in enumerate(cols):
+    ax1.text(-5, 14.5 - i, j)
+    ax2.text(-5, 14.5 - i, j)
+    ax3.text(-5, 14.5 - i, j)
 
 plt.savefig('Project/PICU_project/figs/PICU/Network_training/Practice_plots/Plotting_2d_shap_values.png')
 

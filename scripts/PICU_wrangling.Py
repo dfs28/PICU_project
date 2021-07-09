@@ -1641,7 +1641,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     sum_inout('R DRAIN OUTPUT_mL', flowsheet, 'output')
 
     #R GOSH URINE DRAIN OUTPUT_mL
-    sum_inout('R GOSH URINE DRAIN OUTPUT_m', flowsheet, 'output')
+    sum_inout('R GOSH URINE DRAIN OUTPUT_mL', flowsheet, 'output')
 
     #R OSTOMY OUTPUT TYPE_mL
     sum_inout('R OSTOMY OUTPUT TYPE_mL', flowsheet, 'output')
@@ -1650,7 +1650,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     sum_inout('R TUBE OUTPUT_mL', flowsheet, 'output')
 
     #R URINE OUTPUT_m
-    sum_inout('R URINE OUTPUT_m', flowsheet, 'output')
+    sum_inout('R URINE OUTPUT_mL', flowsheet, 'output')
 
     #R CRRT PROGRAMMED FLUID LOSS_mL/hr - need to check if this is every min or hour
     sum_inout('R CRRT PROGRAMMED FLUID LOSS_mL/hr', flowsheet, 'output')
@@ -1860,6 +1860,9 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv') == Fal
     interpolate_cols('Temp', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = fill_median)
 
     ### Urine output
+    make_new_columns('R GOSH URINE DRAIN OUTPUT_mL', flowsheet, ['Urine_output'], True)
+    make_new_columns('R URINE OUTPUT_mL', flowsheet, ['Urine_output'], True)
+    make_new_columns('R CATHETER URINE RETURNED', flowsheet, ['Urine_output'], True)
     make_new_columns('URINE OUTPUT_mL', flowsheet, ['Urine_output'], True)
     flowsheet['Urine_output_kg'] =  flowsheet['Urine_output']/flowsheet['interpolated_wt_kg'] 
     fill_missing('Urine_output_kg', flowsheet, 'Urine_output_missing_kg')
