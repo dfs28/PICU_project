@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import seaborn as sns
 import shap
+from sklearn.model_selection import KFold
 
 #Read in the data
 flowsheet = pd.read_csv('~/Project/Project_data/files/flowsheet_output.csv', parse_dates = ['taken_datetime'])
@@ -188,7 +189,7 @@ array3d, array2d, outcomes, slicesPerPatient = make_3d_array(flowsheet, length, 
 
 """
 Plan:
-Leave one out cross validation if possible
+Leave one out cross validation if possible - done but k-fold due to time constraints
 Code it up with grid search - not sure if it is possible to change architecture or just hyperparameters
 If doing LOOCV could then calculate a prediction interval (I suppose could repeat this a few times to get prediction interval)
     If doing prediction interval otherwise can just repeat the final model a lot of times
@@ -204,15 +205,21 @@ Maybe change outcomes to binary for simplicity of understanding? Then can do the
 
 
 #Split up testing and outcomes
-split_array3d = test_trainsplit(array3d, np.array([70, 15, 15]))
-split_array2d = test_trainsplit(array2d, np.array([70, 15, 15]))
-split_outcomes = test_trainsplit(outcomes, np.array([70, 15, 15]))
+X = np.array([[1, 2], [3, 4], [1, 2], [3, 4]])
+y = np.array([1, 2, 3, 4])
+kf = KFold(n_splits=100, shuffle = True)
+kf.get_n_splits(array3d)
+
+
+split_array3d = test_trainsplit(array3d, np.array([85, 15]))
+split_array2d = test_trainsplit(array2d, np.array([85, 15]))
+split_outcomes = test_trainsplit(outcomes, np.array([85, 15]))
 train_array3d = split_array3d[0]
 train_array2d = split_array2d[0]
 train_outcomes = split_outcomes[0]
-testing_array3d = split_array3d[1]
-testing_array2d = split_array2d[1]
-testing_outcomes = split_outcomes[1]
+validate_array3d = split_array3d[1]
+validate_array2d = split_array2d[1]
+validate_outcomes = split_outcomes[1]
 
 #Set the input shape
 input_shape3d = train_array3d.shape
@@ -242,12 +249,34 @@ time_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
 full_model = keras.Model([input_timeseries, input_flat], [death_head, time_head])
 full_model.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
 
-#Now fit the outcome head having trained the autoencoder
-full_model_history = full_model.fit([train_array3d, train_array2d], [train_outcomes[:, 5:8], train_outcomes[:, 2:5]], 
-                                    epochs = 10,
+#Callbacks
+my_callbacks = [
+    tf.keras.callbacks.EarlyStopping(patience=5),
+    tf.keras.callbacks.ModelCheckpoint(filepath='model.{epoch:02d}-{val_loss:.2f}.h5'),
+    tf.keras.callbacks.TensorBoard(log_dir='./logs'),
+    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.001)
+]
+
+#Now do crossvalidation with model
+for train_index, test_index in kf.split(array3d):
+    print("TRAIN:", train_index, "TEST:", test_index)
+
+
+    train_array3d, test_array3d = array3d[train_index], array3d[test_index]
+    train_array2d, test_array2d = array2d[train_index], array2d[test_index]
+    train_outcomes1, test_outcomes1 = outcomes[train_index, 5:8], outcomes[test_index, 5:8]
+    train_outcomes2, test_outcomes2 = outcomes[train_index, 2:5], outcomes[test_index, 2:5]
+
+    #Compile the model
+    full_model.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
+
+    #Now fit the model
+    full_model_history = full_model.fit([train_array3d, train_array2d], [train_outcomes1, train_outcomes2], 
+                                    epochs = 20,
                                     batch_size = 100,
                                     shuffle = True, 
-                                    validation_data = ([testing_array3d, testing_array2d], [testing_outcomes[:, 5:8], testing_outcomes[:, 2:5]]))
+                                    validation_data = ([test_array3d, test_array2d], [test_outcomes1, test_outcomes2]), 
+                                    callbacks = my_callbacks)
 
 #Plot the history
 # list all data in history
@@ -477,6 +506,7 @@ plt.savefig('Project/PICU_project/figs/PICU/Network_training/Practice_plots/Plot
 
 
 #Now get shapley values for 2d cnn
+#Should then consider removing values with low shapley values and repeating network to see how it performs
 model_2dCNN = tf.keras.Sequential()
 model_2dCNN.add(tf.keras.layers.Conv2D(16, (3, 3), activation='relu', padding='same',  input_shape=train_image.shape[1:]))
 model_2dCNN.add(tf.keras.layers.MaxPooling2D((2, 2), padding='same'))

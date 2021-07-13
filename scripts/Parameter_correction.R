@@ -3,21 +3,37 @@
 #Setup
 library(childsds)
 
+#Define a function for printing the date, time and what we are doing:
+print_now <- function(statement){
+  #Function that takes a statement and prints the date and time
+  print(paste(statement, Sys.time(), sep = ': '))
+}
+
+
 #Read in the sheet
-flowsheet = read.csv('/store/DAMTP/dfs28/PICU_data/flowsheet_output_touse.csv', header = TRUE, sep = ',')
+print_now('Reading in flowsheet')
+flowsheet = read.csv('/store/DAMTP/dfs28/PICU_data/flowsheet_final_output.csv', header = TRUE, sep = ',')
+print_now('Flowsheet read')
 
 #Will need to go through and only do corrections for that age range, then do the corretions for younger children
 
 #Make corrections
-flowsheet$Weight_z_scores =  sds(flowsheet$interpolated_weight_kg, 
-            age = flowsheet$Age_yrs, 
-            sex = flowsheet$sex,
+interpolated_weights = as.vector(flowsheet$interpolated_wt_kg)
+Ages_yrs = as.vector(flowsheet$Age_yrs)
+Sexes = as.vector(flowsheet$sex)
+flowsheet$Weight_z_scores =  sds(interpolated_weights , 
+            age = Ages_yrs, 
+            sex = Sexes,
             male = 'M', 
             female = 'F', 
             ref = who.ref, 
             item = 'weight', 
             type = 'SDS')
-
+print(length(interpolated_weights))
+print(length(Ages_yrs))
+print(length(Sexes))
+#[1] "value, age, and sex must be of the same length" - not sure where this is coming from - do we need to do height too?
+print_now('Weight corrected')
 
 #### Build corrections using tables - do I need an over 15 case?
 BP_df = data.frame(age = c(0.008, 1, 2, 5, 8, 12, 15), 
@@ -51,8 +67,11 @@ normalise <- function(location, input, age, type, BP_df){
 }
 
 flowsheet$SBP_zscore = unlist(sapply(1:dim(flowsheet)[1], normalise, input = flowsheet$SysBP, age = flowsheet$'Age.yrs.', type = 'SBP', BP_df = BP_df))
+print_now('SBP corrected')
 flowsheet$DBP_zscore = unlist(sapply(1:dim(flowsheet)[1], normalise, input = flowsheet$DiaBP, age = flowsheet$'Age.yrs.', type = 'DBP', BP_df = BP_df))
+print_now('DBP corrected')
 flowsheet$MAP_zscore = unlist(sapply(1:dim(flowsheet)[1], normalise, input = as.numeric(flowsheet$MAP), age = flowsheet$'Age.yrs.', type = 'MAP', BP_df = BP_df))
+print_now('MAP corrected')
 
 #Need to read in the other things
 HR_meansd = read.csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/HR_meansd.csv', sep = ',', header = TRUE)
@@ -76,6 +95,8 @@ calc_zscore <- function(row, sheet, input_col, age_col, scortab) {
 
 calc_zscore(1, flowsheet, 'HR', 'Age_yrs', HR_meansd)
 flowsheet$HR_zscore = sapply(1:dim(flowsheet)[1], calc_zscore, sheet = flowsheet, input_col = 'HR', age_col = 'Age_yrs', scortab = HR_meansd)
+print_now('HR corrected')
 flowsheet$RR_zscore = sapply(1:dim(flowsheet)[1], calc_zscore, sheet = flowsheet, input_col = 'RR', age_col = 'Age_yrs', scortab = RR_meansd)
+print_now('RR corrected')
 
 write.csv(flowsheet, '/store/DAMTP/dfs28/PICU_data/flowsheet_zscores.csv')

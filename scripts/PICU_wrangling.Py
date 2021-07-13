@@ -1764,7 +1764,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
 
 
     #Take maximum corrected intrope to be when patients are on ECMO
-    maximum_inotropy = np.max(flowsheet['Intropes_kg'])
+    maximum_inotropy = np.max(flowsheet['Inotropes_kg'])
     on_ECMO = flowsheet['ECMO'].isna() == False
     flowsheet.loc[on_ECMO, 'Inotropes_kg'] = maximum_inotropy
 
@@ -1860,9 +1860,7 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv') == Fal
     interpolate_cols('Temp', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = fill_median)
 
     ### Urine output
-    make_new_columns('R GOSH URINE DRAIN OUTPUT_mL', flowsheet, ['Urine_output'], True)
     make_new_columns('R URINE OUTPUT_mL', flowsheet, ['Urine_output'], True)
-    make_new_columns('R CATHETER URINE RETURNED', flowsheet, ['Urine_output'], True)
     make_new_columns('URINE OUTPUT_mL', flowsheet, ['Urine_output'], True)
     flowsheet['Urine_output_kg'] =  flowsheet['Urine_output']/flowsheet['interpolated_wt_kg'] 
     fill_missing('Urine_output_kg', flowsheet, 'Urine_output_missing_kg')
