@@ -12,6 +12,8 @@ from sklearn.decomposition import PCA
 import seaborn as sns
 import shap
 from sklearn.model_selection import KFold
+from sklearn.model_selection import GridSearchCV
+from keras.wrappers.scikit_learn import KerasClassifier
 
 #Read in the data
 flowsheet = pd.read_csv('~/Project/Project_data/files/flowsheet_output.csv', parse_dates = ['taken_datetime'])
@@ -221,6 +223,9 @@ validate_array3d = split_array3d[1]
 validate_array2d = split_array2d[1]
 validate_outcomes = split_outcomes[1]
 
+#### Define the 1d convnet as a function
+def temporal_convolutional_net(train_array3d, train_array2d, layer_sizes, filter_sizes, activation, num_layers, dropout, regularisation, optimiser)
+
 #Set the input shape
 input_shape3d = train_array3d.shape
 input_timeseries = keras.Input(shape = input_shape3d[1:])
@@ -252,10 +257,11 @@ full_model.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=[
 #Callbacks
 my_callbacks = [
     tf.keras.callbacks.EarlyStopping(patience=5),
-    tf.keras.callbacks.ModelCheckpoint(filepath='model.{epoch:02d}-{val_loss:.2f}.h5'),
-    tf.keras.callbacks.TensorBoard(log_dir='./logs'),
+    #tf.keras.callbacks.ModelCheckpoint(filepath='model.{epoch:02d}-{val_loss:.2f}.h5', monitor='val_accuracy', verbose=1, save_best_only=True, mode='max'),
+    #tf.keras.callbacks.TensorBoard(log_dir='./logs'),
     tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.001)
 ]
+
 
 #Now do crossvalidation with model
 for train_index, test_index in kf.split(array3d):
@@ -267,7 +273,7 @@ for train_index, test_index in kf.split(array3d):
     train_outcomes1, test_outcomes1 = outcomes[train_index, 5:8], outcomes[test_index, 5:8]
     train_outcomes2, test_outcomes2 = outcomes[train_index, 2:5], outcomes[test_index, 2:5]
 
-    #Compile the model
+    #Compile the model - should probably use sparse
     full_model.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
 
     #Now fit the model
