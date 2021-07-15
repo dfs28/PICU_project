@@ -132,27 +132,27 @@ def temporal_convolutional_net(hp):
 
     ####Now make 1d conv net
     # This is the encoder (drawn from autoencoder thing) - set the shape to be the shape of the timeseries data
-    x = layers.Conv1D(hp.Int("layer_size0", min_value=20, max_value=180, step=20), 
-                      hp.Int("filter_size0", min_value=5, max_value=60, step=5), activation='relu', padding = 'same',  kernel_initializer = init,
+    x = layers.Conv1D(hp.Int("layer_size0", min_value=20, max_value=180, step=20, default = 120), 
+                      hp.Int("filter_size0", min_value=5, max_value=60, step=5, default = 32), activation='relu', padding = 'same',  kernel_initializer = init,
                       kernel_regularizer= kernal_regulariser,
                       bias_regularizer= bias_regulariser,
                       activity_regularizer= activity_regulariser)(input_timeseries)
-    x = layers.Conv1D(hp.Int("layer_size1", min_value=20, max_value=170, step=20), 
-                      hp.Int("filter_size1", min_value=5, max_value=50, step=5), activation='relu', padding = 'same', kernel_initializer = init,
+    x = layers.Conv1D(hp.Int("layer_size1", min_value=20, max_value=170, step=20, default = 80), 
+                      hp.Int("filter_size1", min_value=5, max_value=50, step=5, default = 32), activation='relu', padding = 'same', kernel_initializer = init,
                       kernel_regularizer= kernal_regulariser,
                       bias_regularizer= bias_regulariser,
                       activity_regularizer= activity_regulariser)(x)
     
-    x = layers.MaxPooling1D(hp.Int('pool_size', 1, 4, 1), padding = 'same')(x)
+    x = layers.MaxPooling1D(hp.Int('pool_size', 1, 4, 1, default = 1), padding = 'same')(x)
 
-    encoded = layers.Conv1D(hp.Int("layer_size2", min_value=20, max_value=160, step=20), 
-                      hp.Int("filter_size2", min_value=5, max_value=40, step=5), activation='relu', padding = 'same', kernel_initializer = init,
+    encoded = layers.Conv1D(hp.Int("layer_size2", min_value=20, max_value=160, step=20, default = 40), 
+                      hp.Int("filter_size2", min_value=5, max_value=40, step=5, default = 16), activation='relu', padding = 'same', kernel_initializer = init,
                       kernel_regularizer= kernal_regulariser,
                       bias_regularizer= bias_regulariser,
                       activity_regularizer= activity_regulariser)(x)
 
     ##Now make the other head with input
-    y = layers.Dense(hp.Int("layer_size2", min_value=10, max_value=50, step=5), activation = 'relu', kernel_initializer = init,
+    y = layers.Dense(hp.Int("layer_size2", min_value=10, max_value=50, step=5, default = 30), activation = 'relu', kernel_initializer = init,
                       kernel_regularizer= kernal_regulariser,
                       bias_regularizer= bias_regulariser,
                       activity_regularizer= activity_regulariser)(input_flat)
@@ -164,11 +164,11 @@ def temporal_convolutional_net(hp):
     if hp.Choice('dropout', ['True', 'False']):
         concatted = layers.Dropout(0.5)(concatted)
 
-    dense1 = layers.Dense(hp.Int("layer_size4", min_value=10, max_value=50, step=5), activation = 'relu', use_bias = True, kernel_initializer = init,
+    dense1 = layers.Dense(hp.Int("layer_size4", min_value=10, max_value=50, step=5, default = 30), activation = 'relu', use_bias = True, kernel_initializer = init,
                       kernel_regularizer= kernal_regulariser,
                       bias_regularizer= bias_regulariser,
                       activity_regularizer= activity_regulariser)(concatted)
-    dense2 = layers.Dense(hp.Int("layer_size5", min_value=10, max_value=50, step=5), activation = 'relu', use_bias = True, kernel_initializer = init,
+    dense2 = layers.Dense(hp.Int("layer_size5", min_value=10, max_value=50, step=5, default = 10), activation = 'relu', use_bias = True, kernel_initializer = init,
                       kernel_regularizer= kernal_regulariser,
                       bias_regularizer= bias_regulariser,
                       activity_regularizer= activity_regulariser)(dense1)
@@ -180,17 +180,25 @@ def temporal_convolutional_net(hp):
 
     #This is the full model with death and LOS as the outcome
     full_model = keras.Model([input_timeseries, input_flat], [death_head, time_head, PEWS_head])
-    full_model.compile(optimizer = hp.Choice('optimiser', ['adam', 'rmsprop']), loss='categorical_crossentropy',  metrics=['accuracy', 
+    full_model.compile(optimizer = hp.Choice('optimiser', ['adam', 'rmsprop'], default = 'adam'), loss='categorical_crossentropy',  metrics=['accuracy', 
                         'mse', tf.keras.metrics.MeanAbsoluteError(), 
                         tf.keras.metrics.AUC()])               
 
     return full_model
 
 
-tuner = kt.BayesianOptimization(
+class MyTuner(kt.tuners.Hyperband):
+  def run_trial(self, trial, *args, **kwargs):
+    # You can add additional HyperParameters for preprocessing and custom training loops
+    # via overriding `run_trial`
+    kwargs['batch_size'] = trial.hyperparameters.Int('batch_size', 32, 256, step=32)
+    kwargs['epochs'] = trial.hyperparameters.Int('epochs', 10, 50)
+    super(MyTuner, self).run_trial(trial, *args, **kwargs)# Uses same arguments as the BayesianOptimization Tuner.
+
+tuner = MyTuner(
     temporal_convolutional_net,
     objective="val_loss",
-    max_trials=3,
+    max_epochs=100,
     executions_per_trial=2,
     overwrite=True,
     directory="/store/DAMTP/dfs28/PICU_data",
@@ -204,24 +212,10 @@ my_callbacks = [tf.keras.callbacks.EarlyStopping(patience=5),
 tuner.search(
     [train_array3d, train_array2d], [train_outcomes[:, 2:5], train_outcomes[:, 5:8], train_outcomes[:, 8:11]],
     validation_data=([test_array3d, test_array2d], [test_outcomes[:, 2:5], test_outcomes[:, 5:8], test_outcomes[:, 8:11]]),
-    callbacks=[tf.keras.callbacks.EarlyStopping(patience=1)],
+    callbacks=[tf.keras.callbacks.EarlyStopping(patience=4)],
 )
 
 
-
-
-
-
-
-
-    out = full_model.fit(x = x_train, y = y_train, 
-                                    epochs = params['epochs'],
-                                    batch_size = params['batch_size'],
-                                    shuffle = True, 
-                                    validation_data = (x_val, y_val), 
-                                    callbacks = my_callbacks)
-
-    return full_model, out
 
 model = KerasClassifier(build_fn=temporal_convolutional_net)
 optimizers = ['rmsprop', 'adam']
