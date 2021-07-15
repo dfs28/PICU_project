@@ -2,8 +2,8 @@
 
 # Setup
 import tensorflow as tf
-import keras 
-from keras import layers
+from tensorflow import keras 
+from tensorflow.keras import layers
 import numpy as np
 import pandas as pd
 import math
@@ -13,149 +13,22 @@ import seaborn as sns
 import shap
 from sklearn.model_selection import KFold
 from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import RandomizedSearchCV
 from keras.wrappers.scikit_learn import KerasClassifier
+from skopt import BayesSearchCV
+from skopt.space import Real, Categorical, Integer
+import talos
+import keras_tuner as kt
+
 
 #Read in the data
-flowsheet = pd.read_csv('~/Project/Project_data/files/flowsheet_output.csv', parse_dates = ['taken_datetime'])
-
-
-"""
-training_data = pd.read_csv('Project/PICU_project/practice_data/datatraining.txt')
-training_array = np.array(training_data.loc[:, training_data.columns[1:-1]])
-testing_data = pd.read_csv('Project/PICU_project/practice_data/datatest.txt')
-testing_array = np.array(testing_data.loc[:, testing_data.columns[1:-1]])
-"""
-
-#Normalise the data
-def normalise_array(array):
-    """
-    Function to normalise the data so that it is between 0 and 1
-    Plan to add in functionality to consider capping outliers for example?
-    Or for certain lab values could maybe log scale them and then normalise
-    """
-
-    for i in range(array.shape[1]):
-
-        max_value = np.max(array[:, i])
-        array[:, i] = array[:, i]/max_value
-
-    return array
-
-cols = ['Ventilation', 'IPAP', 'EPAP', 'ETCO2', 'FiO2', 'O2Flow', #Need to add back HFO, Tracheostomy
-        'MeanAirwayPressure', 'SysBP', 'DiaBP', 'HR', 'Comfort', 'AVPU', 'GCS', #need to add back MAP at some point
-        'CRT', 'SpO2', 'Inotropes']
-
-#Make 3d training array
-def make_3d_array(array, length, cols):
-    """
-    Function to make an pandas into a 3d np.array of slices and stack them \n
-    Takes a dataframe, slices it by the length specified 
-    Expects the time series to be longer than the number of vars
-    Specify the length
-    """
-
-    #Get the shape, work out what shape the new array should be
-    array_use = np.array(array.loc[:, cols])
-    
-    #Make this an np array with no nans
-    for i in range(array_use.shape[1]):
-        nas = np.isnan(array_use[:, i])
-        if sum(nas == False) < 1:
-            print(i)
-            continue
-        min = np.min(array_use[nas == False, i])
-        max = np.max(array_use[nas == False, i])
-        array_use[nas, i] = min
-
-        #Now normalise
-        array_use[:, i] -= min
-        array_use[:, i] /= (max - min) 
-
-        #Could also consider then normalising by centile/ alternatively normalising by centile
-        
-    shape = array_use.shape
-    z_dim = math.floor(np.max(shape)/length)
-    
-    #Get the slices to use
-    to_use = list()
-    unique_patients = array['project_id'].unique()
-    slicesPerPatient = np.zeros(len(unique_patients))
-
-    for i in range(z_dim):
-        start_position = i*length
-        end_position = (i + 1)*length
-        
-        #Skip if more than one patient
-        patients = array.loc[range(start_position, end_position), 'project_id'].unique()
-        if patients.shape[0] == 1:
-            to_use.append(i)
-        
-        #Record number of slices per patient (in order)
-        patient_loc = unique_patients == patients
-        slicesPerPatient[patient_loc] += 1
-
-    x_dim = length
-    y_dim = np.min(shape)
-    array_3d = np.empty((len(to_use), y_dim, x_dim))
-    array_2d = np.empty((len(to_use), y_dim))
-
-    #Outcomes
-    outcomes = np.zeros((len(to_use), 10))
-    pt_slices = list()
-
-    for position, i in enumerate(to_use):
-        start_position = i*length
-        end_position = (i + 1)*length
-        temp_array = array_use[start_position:end_position, :]
-        array_3d[position, :, :] = temp_array.transpose()
-        
-        ##Build the outcomes
-        #Make sure you can see which patients these are coming from
-        patient_id = np.where(array.loc[end_position, 'project_id'] == unique_patients)[0]
-        project_id = array.loc[end_position, 'project_id']
-        outcomes[position, 0] = patient_id[0]
-
-        #Age of the patient
-        outcomes[position, 1] = array.loc[end_position, 'Age_yrs']
-        
-        #Time to death as triplicate value - probably can't assume that death is within this admission?
-        if array.loc[end_position, 'time_to_death'] <= 2/365:
-            outcomes[position, 2] = 1
-        elif array.loc[end_position, 'died'] == 'Y':
-            outcomes[position, 3] = 1
-        else: 
-            outcomes[position, 4] = 1
-
-        #Length of stay as triplicate
-        end_of_section = array.loc[end_position, 'taken_datetime']
-        all_dates = array.loc[array['project_id'] == project_id, 'taken_datetime']
-        discharge_date = all_dates[all_dates.index[-1]]
-        time_to_discharge = discharge_date - end_of_section
-
-        #Now assign depending on how soon:
-        if time_to_discharge < np.timedelta64(2, 'D'):
-            outcomes[position, 5] = 1
-        elif time_to_discharge < np.timedelta64(7, 'D'):
-            outcomes[position, 6] = 1
-        else:
-            outcomes[position, 7] = 1
-
-        #Time to death as outcome (if doesn't die then 70yrs to death)
-        if np.isnan(array.loc[end_position, 'time_to_death']):
-            outcomes[position, 8] = 70
-        else:
-            outcomes[position, 9] = array.loc[end_position, 'time_to_death']
-
-        ##Now get pointwise variables
-        medians = [np.median(temp_array[:, i]) for i in range(np.shape(temp_array)[1])]
-        array_2d[position, :] = np.array(medians)
-        
-
-    
-    na_loc = np.isnan(array_3d)
-    array_3d[na_loc] = 0
-
-    return array_3d, array_2d, outcomes, slicesPerPatient
+data = np.load('/store/DAMTP/dfs28/PICU_data/practice_arrays.npz')
+array3d = data['d3']
+array2d = data['d2']
+characteristics = data['chars']
+splines = data['splines']
+outcomes = data['outcomes']
+slices_per_pt = data['per_pt']
 
 def test_trainsplit(array, split):
     """
@@ -185,10 +58,6 @@ def test_trainsplit(array, split):
     
     return split_array
 
-
-length = 60
-array3d, array2d, outcomes, slicesPerPatient = make_3d_array(flowsheet, length, cols)
-
 """
 Plan:
 Leave one out cross validation if possible - done but k-fold due to time constraints
@@ -207,63 +76,195 @@ Maybe change outcomes to binary for simplicity of understanding? Then can do the
 
 
 #Split up testing and outcomes
-X = np.array([[1, 2], [3, 4], [1, 2], [3, 4]])
-y = np.array([1, 2, 3, 4])
-kf = KFold(n_splits=100, shuffle = True)
-kf.get_n_splits(array3d)
-
-
-split_array3d = test_trainsplit(array3d, np.array([85, 15]))
-split_array2d = test_trainsplit(array2d, np.array([85, 15]))
-split_outcomes = test_trainsplit(outcomes, np.array([85, 15]))
+split_array3d = test_trainsplit(array3d, np.array([70, 15, 15]))
+split_array2d = test_trainsplit(array2d, np.array([70, 15, 15]))
+split_outcomes = test_trainsplit(outcomes, np.array([70, 15, 15]))
 train_array3d = split_array3d[0]
 train_array2d = split_array2d[0]
 train_outcomes = split_outcomes[0]
-validate_array3d = split_array3d[1]
-validate_array2d = split_array2d[1]
-validate_outcomes = split_outcomes[1]
+test_array3d = split_array3d[1]
+test_array2d = split_array2d[1]
+test_outcomes = split_outcomes[1]
+validate_array3d = split_array3d[2]
+validate_array2d = split_array2d[2]
+validate_outcomes = split_outcomes[2]
+
+
+
+
 
 #### Define the 1d convnet as a function
-def temporal_convolutional_net(train_array3d, train_array2d, layer_sizes, filter_sizes, activation, num_layers, dropout, regularisation, optimiser)
+def temporal_convolutional_net(hp):
 
-#Set the input shape
-input_shape3d = train_array3d.shape
-input_timeseries = keras.Input(shape = input_shape3d[1:])
-input_flat = keras.Input(shape = train_array2d.shape[1:])
+    """This is the function for the 1d convnet that we will pass to the gridsearch
+    It takes lots of different values that can be used for hyperparameter optimisation
+    Params needs to be a dict
+    layer_size0, layer_size1, layer_size2, layer_size3, layer_size4, 
+                               layer_size5, filter_size0, filter_size1, filter_size2, 
+                               pool_size, num_layers, dropout, optimizer, batch_size, reg_type_kernel, 
+                               reg_type_bias, reg_type_activity, reg_weight1, reg_weight2
+    """
 
-####Now make 1d conv net
-# This is the encoder - set the shape to be the shape of the timeseries data
-x = layers.Conv1D(30, 16, activation='relu', padding = 'same')(input_timeseries)
-x = layers.Conv1D(15, 16, activation='relu', padding = 'same')(x)
-encoded = layers.Conv1D(8, 16, activation='relu', padding = 'same')(x)
+    #Other things to think about - momentum, dropout, sparsity, more layers
+    #Set regularisers
+    l1_value = hp.Choice("reg_weight1", [0., 1e-5, 1e-4, 1e-3])
+    l2_value = hp.Choice("reg_weight2", [0., 1e-5, 1e-4, 1e-3])
+    tf.keras.regularizers.l2(l2_value)
+    tf.keras.regularizers.l1(l1_value)
+    tf.keras.regularizers.l1_l2(l1 = l1_value, l2 = l2_value)
 
-##Now make the other head with input
-y = layers.Dense(8, activation = 'relu')(input_flat)
+    kernal_regulariser = hp.Choice('kernal_reg', ['l1', 'l2', 'l1_l2'])
+    bias_regulariser = hp.Choice('bias_reg', ['l1', 'l2', 'l1_l2'])
+    activity_regulariser = hp.Choice('activity_reg', ['l1', 'l2', 'l1_l2'])
 
-#Now make the other head
-flattened = layers.Flatten()(encoded)
-concatted = layers.Concatenate()([y, flattened])
-dense1 = layers.Dense(32, activation = 'relu', use_bias = True)(concatted)
-dense2 = layers.Dense(8, activation = 'relu', use_bias = True)(dense1)
+    #Set initialiser
+    if hp.Choice("init" , ['glorot_uniform', 'uniform', 'normal']) == 'glorot_uniform':
+        init = initializer = tf.keras.initializers.GlorotUniform()
+    elif  hp.Choice("init", ['glorot_uniform', 'uniform', 'normal']) == 'normal': 
+        init = tf.keras.initializers.RandomNormal(mean=0., stddev=1.)
+    elif  hp.Choice("init", ['glorot_uniform', 'uniform', 'normal']) == 'uniform':
+        init = tf.keras.initializers.RandomUniform(minval=-0.05, maxval=0.05, seed=None)
 
-#Make this a multihead output
-death_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
-time_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
+    #Set the input shape
+    input_shape3d = train_array3d.shape
+    input_timeseries = keras.Input(shape = input_shape3d[1:])
+    input_flat = keras.Input(shape = train_array2d.shape[1:])
 
-#This is the full model with death and LOS as the outcome
-full_model = keras.Model([input_timeseries, input_flat], [death_head, time_head])
-full_model.compile(optimizer='adam', loss='categorical_crossentropy',  metrics=['accuracy'])
+    ####Now make 1d conv net
+    # This is the encoder (drawn from autoencoder thing) - set the shape to be the shape of the timeseries data
+    x = layers.Conv1D(hp.Int("layer_size0", min_value=20, max_value=180, step=20), 
+                      hp.Int("filter_size0", min_value=5, max_value=60, step=5), activation='relu', padding = 'same',  kernel_initializer = init,
+                      kernel_regularizer= kernal_regulariser,
+                      bias_regularizer= bias_regulariser,
+                      activity_regularizer= activity_regulariser)(input_timeseries)
+    x = layers.Conv1D(hp.Int("layer_size1", min_value=20, max_value=170, step=20), 
+                      hp.Int("filter_size1", min_value=5, max_value=50, step=5), activation='relu', padding = 'same', kernel_initializer = init,
+                      kernel_regularizer= kernal_regulariser,
+                      bias_regularizer= bias_regulariser,
+                      activity_regularizer= activity_regulariser)(x)
+    
+    x = layers.MaxPooling1D(hp.Int('pool_size', 1, 4, 1), padding = 'same')(x)
+
+    encoded = layers.Conv1D(hp.Int("layer_size2", min_value=20, max_value=160, step=20), 
+                      hp.Int("filter_size2", min_value=5, max_value=40, step=5), activation='relu', padding = 'same', kernel_initializer = init,
+                      kernel_regularizer= kernal_regulariser,
+                      bias_regularizer= bias_regulariser,
+                      activity_regularizer= activity_regulariser)(x)
+
+    ##Now make the other head with input
+    y = layers.Dense(hp.Int("layer_size2", min_value=10, max_value=50, step=5), activation = 'relu', kernel_initializer = init,
+                      kernel_regularizer= kernal_regulariser,
+                      bias_regularizer= bias_regulariser,
+                      activity_regularizer= activity_regulariser)(input_flat)
+
+    #Now make the other head
+    flattened = layers.Flatten()(encoded)
+    concatted = layers.Concatenate()([y, flattened])
+    
+    if hp.Choice('dropout', ['True', 'False']):
+        concatted = layers.Dropout(0.5)(concatted)
+
+    dense1 = layers.Dense(hp.Int("layer_size4", min_value=10, max_value=50, step=5), activation = 'relu', use_bias = True, kernel_initializer = init,
+                      kernel_regularizer= kernal_regulariser,
+                      bias_regularizer= bias_regulariser,
+                      activity_regularizer= activity_regulariser)(concatted)
+    dense2 = layers.Dense(hp.Int("layer_size5", min_value=10, max_value=50, step=5), activation = 'relu', use_bias = True, kernel_initializer = init,
+                      kernel_regularizer= kernal_regulariser,
+                      bias_regularizer= bias_regulariser,
+                      activity_regularizer= activity_regulariser)(dense1)
+
+    #Make this a multihead output
+    death_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
+    time_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
+    PEWS_head = layers.Dense(3, activation = 'softmax', use_bias = True)(dense2)
+
+    #This is the full model with death and LOS as the outcome
+    full_model = keras.Model([input_timeseries, input_flat], [death_head, time_head, PEWS_head])
+    full_model.compile(optimizer = hp.Choice('optimiser', ['adam', 'rmsprop']), loss='categorical_crossentropy',  metrics=['accuracy', 
+                        'mse', tf.keras.metrics.MeanAbsoluteError(), 
+                        tf.keras.metrics.AUC()])               
+
+    return full_model
+
+
+tuner = kt.BayesianOptimization(
+    temporal_convolutional_net,
+    objective="val_loss",
+    max_trials=3,
+    executions_per_trial=2,
+    overwrite=True,
+    directory="/store/DAMTP/dfs28/PICU_data",
+    project_name="convnet_log",
+)
 
 #Callbacks
-my_callbacks = [
-    tf.keras.callbacks.EarlyStopping(patience=5),
-    #tf.keras.callbacks.ModelCheckpoint(filepath='model.{epoch:02d}-{val_loss:.2f}.h5', monitor='val_accuracy', verbose=1, save_best_only=True, mode='max'),
-    #tf.keras.callbacks.TensorBoard(log_dir='./logs'),
-    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.001)
-]
+my_callbacks = [tf.keras.callbacks.EarlyStopping(patience=5),
+                    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.001)]
 
+tuner.search(
+    [train_array3d, train_array2d], [train_outcomes[:, 2:5], train_outcomes[:, 5:8], train_outcomes[:, 8:11]],
+    validation_data=([test_array3d, test_array2d], [test_outcomes[:, 2:5], test_outcomes[:, 5:8], test_outcomes[:, 8:11]]),
+    callbacks=[tf.keras.callbacks.EarlyStopping(patience=1)],
+)
+
+
+
+
+
+
+
+
+    out = full_model.fit(x = x_train, y = y_train, 
+                                    epochs = params['epochs'],
+                                    batch_size = params['batch_size'],
+                                    shuffle = True, 
+                                    validation_data = (x_val, y_val), 
+                                    callbacks = my_callbacks)
+
+    return full_model, out
+
+model = KerasClassifier(build_fn=temporal_convolutional_net)
+optimizers = ['rmsprop', 'adam']
+init = ['glorot_uniform', 'normal', 'uniform']
+epochs = [50, 100, 150]
+batch_size = [range(50, 200, 20)]
+layer_size0 = [range(20, 180, 10)]
+layer_size1 = [range(15, 179, 10)]
+layer_size2 = [range(10, 178, 10)]
+layer_size3 = [range(5, 170, 10) ] 
+layer_size4 = [range(5, 165, 10)]
+layer_size5 = [range(2, 160, 10)]
+filter_size = (range(5, 50, 10))
+pool_size = [range(1, 4)]
+dropout = [False, True]
+reg_type = ['l1', 'l2', 'l1_l2', 'none']
+reg_type_bias = ['l1', 'l2', 'l1_l2', 'none'] 
+reg_type_activity = ['l1', 'l2', 'l1_l2', 'none'] 
+reg_weight = [1e-5, 1e-4, 1e-3] 
+
+param_grid = dict(optimizer=optimizers, epochs=epochs, batch_size=batch_size, init=init, layer_size0 = layer_size0,
+                 layer_size1 = layer_size1, layer_size2 = layer_size2, layer_size3 = layer_size3, layer_size4 = layer_size4, 
+                 layer_size5 = layer_size5, filter_size1 = filter_size, filter_size0 = filter_size, filter_size2 = filter_size, 
+                 dropout = dropout, reg_type_activity = reg_type, reg_type_kernel = reg_type, reg_type_bias = reg_type, 
+                 reg_weight1 = reg_weight, reg_weight2 = reg_weight)
+
+scan_object = talos.Scan(x=[train_array3d, train_array2d],
+                         y=[train_outcomes[:, 2:5], train_outcomes[:, 5:8], train_outcomes[:, 8:11]],
+                         x_val=[test_array3d, test_array2d],
+                         y_val=[test_outcomes[:, 2:5], test_outcomes[:, 5:8], test_outcomes[:, 8:11]],
+                         params=param_grid,
+                         model=temporal_convolutional_net, 
+                         experiment_name = '1d_convnet')
+
+
+#Think gridsearchcv takes 
+random = RandomizedSearchCV(estimator=model, param_distributions=param_grid, cv = 10, random_state = 0)
+random_result = random.fit([train_array3d, train_array2d], [train_outcomes[:, 2:5], train_outcomes[:, 5:8], train_outcomes[:, 8:11]], callbacks = my_callbacks)
 
 #Now do crossvalidation with model
+kf = KFold(n_splits=100, shuffle = True)
+kf.get_n_splits(array3d)
+
 for train_index, test_index in kf.split(array3d):
     print("TRAIN:", train_index, "TEST:", test_index)
 
