@@ -8,6 +8,8 @@ import math
 from datetime import datetime
 from scipy import stats
 import scipy
+from progress.bar import Bar
+
 
 #In reality import the big flowsheet to use thing
 flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_zscores.csv', parse_dates = ['taken_datetime'])
@@ -42,6 +44,11 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
     i_series_cols = [i for i, j in enumerate(all_used_cols) if j in series_cols]
     j_series_cols = [j for i, j in enumerate(all_used_cols) if j in series_cols]
 
+    print('Converted to np array: ', datetime.now().strftime("%H:%M:%S"))
+
+    #Monitor progress
+    bar = Bar('Normalising data', max=array_use.shape[1])
+
     #Make this an np array with no nans
     for i in range(array_use.shape[1]):
         nas = np.isnan(array_use[:, i])
@@ -60,7 +67,11 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
         #Now normalise 0-1
         array_use[:, i] -= min
         if not (max - min) == 0:
-            array_use[:, i] /= (max - min) 
+            array_use[:, i] /= (max - min)
+
+        bar.next()
+    bar.finish()
+
 
         
     shape = array_use.shape
@@ -71,7 +82,8 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
     unique_patients = array['project_id'].unique()
     slicesPerPatient = np.zeros(len(unique_patients))
 
-    for i in range(z_dim):
+    bar = Bar('Getting useable slices', max=z_dim)
+    for i in range():
         start_position = i*length
         end_position = (i + 1)*length
         
@@ -84,6 +96,9 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
             patient_loc = unique_patients == patients[0]
             slicesPerPatient[patient_loc] += 1
 
+        bar.next()
+    bar.finish()
+
     x_dim = length
     y_dim = np.min(shape)
     array_3d = np.empty((len(to_use), len(i_series_cols), x_dim))
@@ -95,6 +110,7 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
     outcomes = np.zeros((len(to_use), 12))
     pt_slices = list()
 
+    bar = Bar('Slicing and outcomes', max=len(to_use))
     for position, i in enumerate(to_use):
         start_position = i*length
         end_position = (i + 1)*length
@@ -129,9 +145,9 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
         #Correct for death prior to discharge
 
         #Now assign depending on how soon:
-        if time_to_discharge < np.timedelta64(2, 'D'):
+        if (time_to_discharge < np.timedelta64(2, 'D')) and (outcomes[position, 2] != 1):
             outcomes[position, 5] = 1
-        elif time_to_discharge < np.timedelta64(7, 'D'):
+        elif time_to_discharge < np.timedelta64(7, 'D') and (array.loc[end_position, 'time_to_death'] > 7/365):
             outcomes[position, 6] = 1
         else:
             outcomes[position, 7] = 1
@@ -174,8 +190,10 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
             #Get polynomial values, smoothing seems to make this all the same length (8, will need to make this adaptable if change length)
             polynomials = scipy.interpolate.splrep(x = range(len(temp_array[:, i])), y = temp_array[:, i], s= 100)[1]
             splines[position, range(i*8, (i+1)*8)] = polynomials
-        
 
+        bar.next()
+        
+    bar.finish()
     
     na_loc = np.isnan(array_3d)
     array_3d[na_loc] = 0
