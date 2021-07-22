@@ -162,8 +162,9 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
         max_pews = np.max(array.loc[start_position:end_position, 'PEWS'])
 
         #Get all PEWS deterioration
-        PEWSover8 = all_PEWS > max_pews + 1
-        PEWSdate = all_dates[PEWSover8]
+        PEWSover8 = all_PEWS > (max_pews + 1)
+        next_dates = all_dates[PEWSover8.index]
+        PEWSdate = next_dates[PEWSover8]
 
         if len(PEWSdate) > 0 or array.loc[end_position, 'time_to_death'] <= 1/365:
             
@@ -192,11 +193,11 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
         array_characteristics[position, :] = np.array(means + st_devs)
         
         ##Fit splines to approximate curve
-        for i in range(temp_array.shape[1]):
+        for j in range(temp_array.shape[1]):
 
             #Get polynomial values, smoothing seems to make this all the same length (8, will need to make this adaptable if change length)
-            polynomials = scipy.interpolate.splrep(x = range(len(temp_array[:, i])), y = temp_array[:, i], s= 100)[1]
-            splines[position, range(i*8, (i+1)*8)] = polynomials
+            polynomials = scipy.interpolate.splrep(x = range(len(temp_array[:, j])), y = temp_array[:, j], s= 10000)[1]
+            splines[position, range(j*8, (j+1)*8)] = polynomials[:8]
 
         bar.next()
         
