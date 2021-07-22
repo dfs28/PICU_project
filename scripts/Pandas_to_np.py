@@ -1,5 +1,4 @@
 #### Little script to convert big flowsheet file into np arrays for use
-## Unfinished
 import pandas as pd
 import numpy as np
 import re
@@ -83,7 +82,7 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
     slicesPerPatient = np.zeros(len(unique_patients))
 
     bar = Bar('Getting useable slices', max=z_dim)
-    for i in range():
+    for i in range(z_dim):
         start_position = i*length
         end_position = (i + 1)*length
         
@@ -152,21 +151,29 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
         else:
             outcomes[position, 7] = 1
 
-        #Now do something with PEWS as triplicate
-        all_PEWS = array.loc[array['project_id'] == project_id, 'PEWS']
+        #Now do something with PEWS as triplicate - get all PEWS after end of this slice
+        pt_locs = np.where(array['project_id'] == project_id)
+
+        #Get all slots from end of slice to end of patient
+        next_slices = np.intersect1d(pt_locs[0], range(end_position, array.shape[0]))
+        all_PEWS = array.loc[next_slices, 'PEWS']
         
-        #Set PEWS cutoff
-        PEWSover8 = all_PEWS > 8
+        #Get maximum PEWS from current slice
+        max_pews = np.max(array.loc[start_position:end_position, 'PEWS'])
+
+        #Get all PEWS deterioration
+        PEWSover8 = all_PEWS > max_pews + 1
         PEWSdate = all_dates[PEWSover8]
-        if len(PEWSdate) > 0:
+
+        if len(PEWSdate) > 0 or array.loc[end_position, 'time_to_death'] <= 1/365:
             
             #As above with discharge date
             time_to_PEWS = PEWSdate[PEWSdate.index[0]] - end_of_section
             
             #Currently setting cutoffs to <6h, 6-24h, >24h
-            if time_to_PEWS < np.timedelta64(6, 'h'):
+            if time_to_PEWS < np.timedelta64(6, 'h') or array.loc[end_position, 'time_to_death'] <= 0.25/365:
                 outcomes[position, 8] = 1
-            elif time_to_PEWS < np.timedelta64(1, 'D'):
+            elif time_to_PEWS < np.timedelta64(1, 'D') or array.loc[end_position, 'time_to_death'] <= 1/365:
                 outcomes[position, 9] = 1
             else:
                 outcomes[position, 10] = 1
@@ -204,17 +211,19 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
 
     return array_3d, array_2d, array_characteristics, splines, outcomes, slicesPerPatient, all_used_cols, j_point_cols, j_series_cols
 
+#Note that HCT. is HCT#
 point_cols = ['ALT', 'Albumin', 'AlkPhos','AST', 'Aspartate', 'Amylase', 'APTT', 'Anion_gap', 'Base_excess', 'Basophils', 'Bicarb',
-            'pH', 'Blood_culture', 'CRP', 'Ca2+', 'Cl', 'Eosinophils', 'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT%', 'HCT', 'INR',
+            'pH', 'Blood_culture', 'CRP', 'Ca2.', 'Cl', 'Eosinophils', 'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT.', 'HCT', 'INR',
             'Lactate', 'Lymphs', 'Mg', 'Monocytes', 'Neuts', 'P50', 'PaCO2', 'PcCO2', 'PmCO2', 'PaO2', 'PcO2', 'PmO2', 'PO2', 
-            'PvCO2', 'PcO2.1', 'Phos', 'Plts', 'K+', 'PT', 'Retics', 'Na+', 'TT', 'Bili', 'WCC', 'Strong_ion_gap', 'Age_yrs', 'sex', 
+            'PvCO2', 'PcO2.1', 'Phos', 'Plts', 'K.', 'PT', 'Retics', 'Na.', 'TT', 'Bili', 'WCC', 'Strong_ion_gap', 'Age_yrs', 'sex', 
             'ethnicity', 'Weight_z_scores']
 
-series_cols =  ['Ventilation', 'HFO', 'IPAP', 'EPAP', 'Tracheostomy', 'ETCO2', 'FiO2', 'O2Flow/kg', 'Ventilation_L_min', 'Ventilation(ml)',
-                'MeanAirwayPressure', 'Ventilation_missing', 'O2Flow/kg_missing', 'IPAP_missing', 'EPAP_missing', 'FiO2_missing', 'HFO_missing',
-                'Tracheostomy_missing', 'Ventilation(ml)_missing', 'MeanAirwayPressure_missing', 'ETCO2_missing', 'SBP_zscore', 'DBP_zscore', 
-                'MAP_zscore', 'SysBP_missing', 'DiaBP_missing', 'MAP_missing', 'HR_zscore', 'HR_missing', 'Comfort:Alertness', 'Comfort:BP', 'Comfort:Calmness',
-                'Comfort', 'Comfort:HR', 'Comfort:Resp', 'AVPU', 'GCS_V', 'GCS_E', 'GCS_M', 'GCS', 'GCS_missing', 'AVPU_missing', 'CRT', 'CRT_missing',
+
+series_cols =  ['Ventilation', 'HFO', 'IPAP', 'EPAP', 'Tracheostomy', 'ETCO2', 'FiO2', 'O2Flow.kg', 'Ventilation_L_min', 'Ventilation.ml.',
+                'MeanAirwayPressure', 'Ventilation_missing', 'O2Flow.kg_missing', 'IPAP_missing', 'EPAP_missing', 'FiO2_missing', 'HFO_missing',
+                'Tracheostomy_missing', 'Ventilation.ml._missing', 'MeanAirwayPressure_missing', 'ETCO2_missing', 'SBP_zscore', 'DBP_zscore', 
+                'MAP_zscore', 'SysBP_missing', 'DiaBP_missing', 'MAP_missing', 'HR_zscore', 'HR_missing', 'Comfort.Alertness', 'Comfort.BP', 'Comfort.Calmness',
+                'Comfort', 'Comfort.HR', 'Comfort.Resp', 'AVPU', 'GCS_V', 'GCS_E', 'GCS_M', 'GCS', 'GCS_missing', 'AVPU_missing', 'CRT', 'CRT_missing',
                 'SpO2', 'SpO2_missing', 'interpolated_ht_m', 'ECMO', 'ECMO_missing', 'Inotropes_kg', 'Inotropes_missing', 'RR_zscore', 'RR_missing',
                 'dialysis', 'dialysis_missing', 'Temp', 'Temp_missing', 'Urine_output_kg', 'Urine_output_missing_kg', 'PEWS']
 
