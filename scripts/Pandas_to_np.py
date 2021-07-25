@@ -168,8 +168,14 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
 
         if len(PEWSdate) > 0 or array.loc[end_position, 'time_to_death'] <= 1/365:
             
-            #As above with discharge date
-            time_to_PEWS = PEWSdate[PEWSdate.index[0]] - end_of_section
+            #Need this clause otherwsie time_to_PEWS messed up if low next pews but dies
+            if len(PEWSdate) > 0:
+                #As above with discharge date
+                time_to_PEWS = PEWSdate[PEWSdate.index[0]] - end_of_section
+
+            else:
+                #Just set time to PEWS to be how long until they die - have to use pd.Timedelta as np.timedelta64 doesn't accept floats
+                time_to_PEWS = pd.Timedelta(array.loc[end_position, 'time_to_death']*365, 'D') 
             
             #Currently setting cutoffs to <6h, 6-24h, >24h
             if time_to_PEWS < np.timedelta64(6, 'h') or array.loc[end_position, 'time_to_death'] <= 0.25/365:
