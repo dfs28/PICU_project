@@ -1,0 +1,1 @@
+{"3rd block": "True", "last pooling layer": 3, "return_sequences": "True", "bidirectional_init": "True", "layer_size1": 110, "2 layer lstm": "False", "bidirectional1": "True", "layer_size2": 50, "batch_size": 224, "epochs": 18, "tuner/epochs": 4, "tuner/initial_epoch": 0, "tuner/bracket": 2, "tuner/round": 0}

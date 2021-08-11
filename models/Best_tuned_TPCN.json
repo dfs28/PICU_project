@@ -1,0 +1,1 @@
+{"layer_size0": 20, "filter_size0": 5, "layer_size1": 15, "filter_size1": 40, "pool_size1": 6, "layer_size2": 20, "filter_size2": 10, "layer_size3": 25, "filter_size3": 15, "pool_size2": 4, "dense2": 65, "batch_size": 256, "epochs": 14, "tuner/epochs": 10, "tuner/initial_epoch": 4, "tuner/bracket": 3, "tuner/round": 2, "tuner/trial_id": "c3fbe711825da48d5da4a2b0595863d7"}
