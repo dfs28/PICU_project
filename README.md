@@ -21,8 +21,10 @@ If you have any questions or are from GOSH and would like access to the data ple
 
 A note on versions:
 Python version 3.8.1 used
+R Version 4.1.1 used for Parameter_Correction.R with childsds version 0.7.6
+R Version 4.0.3 used for Calculate_mean_sd.R with rriskDistributions version 2.1.2
 
-Relevant Packages
+Relevant Packages in Python
 
 Cython                  0.29.23
 Keras                   2.4.3
