@@ -14,7 +14,7 @@ import sys
 from functools import reduce
 
 #In reality import the big flowsheet to use thing
-flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_zscores.csv', parse_dates = ['taken_datetime'])
+flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_zscores.csv.gz', parse_dates = ['taken_datetime'])
 print('Flowsheet loaded: ', datetime.now().strftime("%H:%M:%S"))
 
 #Fix issue with ethnicity, sex and died
@@ -114,7 +114,7 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
     p_values = np.empty((len(to_use), len(i_series_cols)))
 
     #Outcomes
-    outcomes = np.zeros((len(to_use), 12))
+    outcomes = np.zeros((len(to_use), 13))
     pt_slices = list()
 
     bar = Bar('Slicing and outcomes', max=len(to_use))
@@ -208,6 +208,12 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
         else:
             outcomes[position, 11] = array.loc[end_position, 'time_to_death']
 
+        #Time to deterioration as outcome (if not NA then 100 days to death)
+        if np.isnan(time_to_deteriorate):
+                outcomes[position, 12] = 2400
+        else:
+                outcomes[position, 12] = time_to_deteriorate
+
         ##Now get pointwise variables - could do median and mad depending on how scale to percentile looks?
         means = [np.mean(temp_array[:, i]) for i in range(np.shape(temp_array)[1])]
         st_devs = [np.std(temp_array[:, i]) for i in range(np.shape(temp_array)[1])]
@@ -270,5 +276,5 @@ print('Saved: ', datetime.now().strftime("%H:%M:%S"))
 
 #Plot PEWS to decide where to set the cutoff
 #Need to also work out how well PEWS itself performs in predicting outcomes
-plt.hist(flowsheet['PEWS'])
-plt.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/PEWS_hist.png')
+#plt.hist(flowsheet['PEWS'])
+#plt.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/PEWS_hist.png')

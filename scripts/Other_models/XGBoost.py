@@ -140,7 +140,6 @@ for i in range(10):
 conf_mat1 = confusion_matrix(y_pred, y_test)
 
 #Importance plot
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize = (20, 10))
 feature_importance1 = clf1.feature_importances_
 #Get top 20 most important features
 feature_order1 = np.argsort(-1*feature_importance1)
@@ -148,6 +147,18 @@ feature_names1 =  point_cols + series_cols_mean
 top_features_names1 = [feature_names1[i] for i in feature_order1[0:20]]
 top_feature_values1 = [feature_importance1[i] for i in feature_order1[0:20]]
 
+#Horizontal bar plot
+fig, ax = plt.subplots(1, 1, figsize = (10, 7))
+ax.barh(top_features_names1, top_feature_values1)
+ax.set_yticks(np.arange(len(top_features_names1)))
+ax.set_yticklabels(top_features_names1)
+ax.invert_yaxis()  # labels read top-to-bottom
+ax.set_xlabel('Gain (feature importance)')
+ax.set_title('Feature importance for Deterioration')
+plt.subplots_adjust(left=0.3)
+fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/XGBoost_importance_deterioration_only.png')
+
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize = (20, 10))
 ax1.set_title('Deterioration')
 ax1.bar(top_features_names1, top_feature_values1, color='green')
 plt.xticks(rotation='vertical')
