@@ -22,6 +22,8 @@ array2d = data['d2']
 outcomes = data['outcomes']
 characteristics = data['chars']
 splines = data['splines']
+slopes = data['slopes']
+r_values = data['r_values']
 
 
 def test_trainsplit(array, split):
@@ -154,6 +156,10 @@ results = {'acc_PEWS' : np.mean(accuracy),
 a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/XGBoost_results", "w")
 json.dump(results, a_file)
 a_file.close()
+
+
+
+
 
 conf_mat1 = confusion_matrix(y_pred, y_test)
 
