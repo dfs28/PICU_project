@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import os
 import pandas as pd
 import json
-from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, auc, confusion_matrix, roc_curve
+from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, auc, confusion_matrix, roc_curve, precision_score, recall_score, f1_score
 import matplotlib.pyplot as plt
 
 #Read in the data
@@ -113,29 +113,47 @@ model1 = XGBClassifier(param_dict = param_grid)
 X_test = np.concatenate((test_array2d, test_characteristics), axis=1)
 y_test = np.argmax(test_outcomes[:, 8:11], axis = 1)
 
-#RErun 10 times 
+#Don't need to rerun 10 times 
 accuracy = list()
 MSE = list()
 AUROC = list()
 MAE = list()
+Precision = list()
+Recall = list()
+F1 = list()
 
 #Need to one hot encode
 onehot_encoder = sklearn.preprocessing.OneHotEncoder(sparse=False)
 integer_encoded_test = y_test.reshape(len(y_test), 1)
 onehot_encoded_test = onehot_encoder.fit_transform(integer_encoded_test)
-for i in range(10):
 
-       #Run the model
-       clf1 = model1.fit(X, y)
-       y_pred = clf1.predict(X_test)
-       integer_encoded_pred = y_pred.reshape(len(y_pred), 1)
-       onehot_encoded_pred = onehot_encoder.fit_transform(integer_encoded_pred)
+#Run the model
+clf1 = model1.fit(X, y)
+y_pred = clf1.predict(X_test)
+integer_encoded_pred = y_pred.reshape(len(y_pred), 1)
+onehot_encoded_pred = onehot_encoder.fit_transform(integer_encoded_pred)
 
-       #Save the outcomes
-       accuracy.append(accuracy_score(y_pred, y_test))
-       MSE.append(mean_squared_error(y_pred, y_test))
-       MAE.append(mean_absolute_error(y_pred, y_test))
-       AUROC.append(roc_auc_score(onehot_encoded_pred, onehot_encoded_test, multi_class = 'ovr', average = 'macro'))
+#Save the outcomes
+accuracy.append(accuracy_score(y_pred, y_test))
+MSE.append(mean_squared_error(y_pred, y_test))
+MAE.append(mean_absolute_error(y_pred, y_test))
+AUROC.append(roc_auc_score(onehot_encoded_pred, onehot_encoded_test, multi_class = 'ovr', average = 'macro'))
+Recall.append(recall_score(onehot_encoded_pred, onehot_encoded_test, average = 'macro'))
+Precision.append(precision_score(onehot_encoded_pred, onehot_encoded_test, average = 'macro'))
+F1.append(f1_score(onehot_encoded_pred, onehot_encoded_test, average = 'macro'))
+
+#Save to a json file
+results = {'acc_PEWS' : np.mean(accuracy),
+            'AUC_PEWS' : np.mean(AUROC),
+            'MSE_PEWS' : np.mean(MSE),
+            'MAE_PEWS' : np.mean(MAE), 
+            'precision_PEWS' : np.mean(Precision), 
+            'recall_PEWS' : np.mean(Recall), 
+            'F1_PEWS' : np.mean(F1)}
+
+a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/XGBoost_results", "w")
+json.dump(results, a_file)
+a_file.close()
 
 conf_mat1 = confusion_matrix(y_pred, y_test)
 
