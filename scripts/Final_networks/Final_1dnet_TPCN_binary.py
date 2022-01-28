@@ -82,6 +82,7 @@ binary_death_test_outcomes = np.transpose(np.array([np.sum(all_test_outcomes[:, 
 binary_LOS_train_outcomes = np.transpose(np.array([np.sum(all_train_outcomes[:, 5:6], axis = 1), np.sum(all_train_outcomes[:,6:8], axis = 1)]))
 binary_LOS_test_outcomes = np.transpose(np.array([np.sum(all_test_outcomes[:, 5:6], axis = 1), np.sum(all_test_outcomes[:,5:6], axis = 1)]))
 
+
 def make_1DNET(model_type):
     #Make the final net
     kernal_regulariser = bias_regulariser = tf.keras.regularizers.l2(1e-5)
@@ -102,21 +103,42 @@ def make_1DNET(model_type):
     x = layers.Conv1D(20, 15, activation='relu', padding = 'causal',  kernel_initializer = init,
                     kernel_regularizer= kernal_regulariser,
                     bias_regularizer= bias_regulariser)(input_timeseries)
-    x = layers.Conv1D(40, 40, activation='relu', padding = 'causal', kernel_initializer = init,
+    y = layers.Conv1D(20, 1, activation='relu', padding = 'causal',  kernel_initializer = init,
+                    kernel_regularizer= kernal_regulariser,
+                    bias_regularizer= bias_regulariser)(input_timeseries)
+    x = tf.keras.layers.Concatenate(axis=2)([x, y])
+
+    z = layers.Conv1D(40, 40, activation='relu', padding = 'causal', kernel_initializer = init,
                     kernel_regularizer= kernal_regulariser,
                     bias_regularizer= bias_regulariser, 
                     dilation_rate = 2)(x)
+    y = layers.Conv1D(40, 1, activation='relu', padding = 'causal',  kernel_initializer = init,
+                    kernel_regularizer= kernal_regulariser,
+                    bias_regularizer= bias_regulariser, 
+                    dilation_rate = 2)(x)
+    x = tf.keras.layers.Concatenate(axis=2)([z, y])
         
     x = layers.MaxPooling1D(2, padding = 'same')(x)
 
-    x = layers.Conv1D(140, 15, activation='relu', padding = 'causal',  kernel_initializer = init,
+    z = layers.Conv1D(140, 15, activation='relu', padding = 'causal',  kernel_initializer = init,
                     kernel_regularizer= kernal_regulariser,
                     bias_regularizer= bias_regulariser, 
                     dilation_rate = 3)(x)
-    x = layers.Conv1D(120, 5, activation='relu', padding = 'causal', kernel_initializer = init,
+    y = layers.Conv1D(140, 1, activation='relu', padding = 'causal',  kernel_initializer = init,
+                    kernel_regularizer= kernal_regulariser,
+                    bias_regularizer= bias_regulariser, 
+                    dilation_rate = 3)(x)
+    x = tf.keras.layers.Concatenate(axis=2)([z, y])
+
+    z = layers.Conv1D(120, 5, activation='relu', padding = 'causal', kernel_initializer = init,
                     kernel_regularizer= kernal_regulariser,
                     bias_regularizer= bias_regulariser, 
                     dilation_rate = 4)(x)
+    y = layers.Conv1D(130, 1, activation='relu', padding = 'causal',  kernel_initializer = init,
+                    kernel_regularizer= kernal_regulariser,
+                    bias_regularizer= bias_regulariser, 
+                    dilation_rate = 4)(x)
+    x = tf.keras.layers.Concatenate(axis=2)([z, y])
         
     x = layers.MaxPooling1D(4, padding = 'same')(x)
 
@@ -202,7 +224,7 @@ for i in range(10):
 
     full_model.compile(optimizer = 'adam', loss='binary_crossentropy',  metrics=['accuracy', 
                             'mse', tf.keras.metrics.MeanAbsoluteError(), 
-                            tf.keras.metrics.AUC()], loss_weights=[2, 2, 6])               
+                            tf.keras.metrics.AUC()])               
 
     #Dont forget to add batch size back in 160
     #Now fit the model
@@ -213,15 +235,15 @@ for i in range(10):
                                         validation_data = ([all_test_array3d, all_test_array2d], [binary_death_test_outcomes, binary_LOS_test_outcomes, binary_deterioration_test_outcomes]),
                                         callbacks = [tf.keras.callbacks.EarlyStopping(patience=1)])
     y_pred1, y_pred2, y_pred3 = full_model.predict([all_test_array3d, all_test_array2d])
-    recall_death_full.append(recall_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    recall_LOS_full.append(recall_score(np.argmax(y_pred2, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    recall_PEWS_full.append(recall_score(np.argmax(y_pred3, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
-    precision_death_full.append(precision_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    precision_LOS_full.append(precision_score(np.argmax(y_pred2, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    precision_PEWS_full.append(precision_score(np.argmax(y_pred3, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
-    F1_death_full.append(f1_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    F1_LOS_full.append(f1_score(np.argmax(y_pred2, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    F1_PEWS_full.append(f1_score(np.argmax(y_pred3, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
+    recall_death_full.append(recall_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    recall_LOS_full.append(recall_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred2, axis = 1), average = 'macro'))
+    recall_PEWS_full.append(recall_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred3, axis = 1), average = 'macro'))
+    precision_death_full.append(precision_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    precision_LOS_full.append(precision_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred2, axis = 1), average = 'macro'))
+    precision_PEWS_full.append(precision_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred3, axis = 1), average = 'macro'))
+    F1_death_full.append(f1_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    F1_LOS_full.append(f1_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred2, axis = 1), average = 'macro'))
+    F1_PEWS_full.append(f1_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred3, axis = 1), average = 'macro'))
 
     keys = [i for i in full_model_history.history.keys()]
     AUC_death_full.append(full_model_history.history[keys[23]][-1])
@@ -237,11 +259,11 @@ for i in range(10):
     MAE_LOS_full.append(full_model_history.history[keys[26]][-1]) 
     MAE_PEWS_full.append(full_model_history.history[keys[30]][-1]) 
     
-conf_mat1 = confusion_matrix(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1))
-conf_mat2 = confusion_matrix(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred2, axis = 1))
-conf_mat3_2 = confusion_matrix(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred3, axis = 1))
+conf_mat1 = confusion_matrix(np.argmax(y_pred1, axis = 1), np.argmax(all_test_outcomes[:, 2:5], axis = 1))
+conf_mat2 = confusion_matrix(np.argmax(y_pred2, axis = 1), np.argmax(all_test_outcomes[:, 5:8], axis = 1))
+conf_mat3_2 = confusion_matrix(np.argmax(y_pred3, axis = 1), np.argmax(all_test_outcomes[:, 8:11], axis = 1))
 #Aim to tune outputs of 1 and 3
-tf.keras.utils.plot_model(full_model, to_file='/mhome/damtp/q/dfs28/Project/PICU_project/models/1d_CNN_TCN_binary.png', show_shapes=True, expand_nested = True)
+tf.keras.utils.plot_model(full_model, to_file='/mhome/damtp/q/dfs28/Project/PICU_project/models/1d_CNN_TPCN.png', show_shapes=True, expand_nested = True)
 
 
 #Storage for individual models
@@ -283,10 +305,10 @@ for i in range(10):
                                         validation_data = ([all_test_array3d, all_test_array2d], [binary_death_test_outcomes]),
                                         callbacks = [tf.keras.callbacks.EarlyStopping(patience=1)])
     y_pred1 = full_model.predict([all_test_array3d, all_test_array2d])  
-    acc_death_individual.append(accuracy_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1)))
-    recall_death_individual.append(recall_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    precision_death_individual.append(precision_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    F1_death_individual.append(f1_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
+    acc_death_individual.append(accuracy_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1)))
+    recall_death_individual.append(recall_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    precision_death_individual.append(precision_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    F1_death_individual.append(f1_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
 
     keys = [i for i in full_model_history.history.keys()]
     AUC_death_individual.append(full_model_history.history[keys[7]][-1])
@@ -312,10 +334,10 @@ for i in range(10):
                                         validation_data = ([all_test_array3d, all_test_array2d], [binary_LOS_test_outcomes]),
                                         callbacks = [tf.keras.callbacks.EarlyStopping(patience=1)])
     y_pred1 = full_model.predict([all_test_array3d, all_test_array2d])  
-    acc_LOS_individual.append(accuracy_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1)))
-    recall_LOS_individual.append(recall_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    precision_LOS_individual.append(precision_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    F1_LOS_individual.append(f1_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
+    acc_LOS_individual.append(accuracy_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1)))
+    recall_LOS_individual.append(recall_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    precision_LOS_individual.append(precision_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    F1_LOS_individual.append(f1_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
 
     keys = [i for i in full_model_history.history.keys()]
     AUC_LOS_individual.append(full_model_history.history[keys[7]][-1])
@@ -338,17 +360,17 @@ for i in range(10):
                                         validation_data = ([all_test_array3d, all_test_array2d], [binary_deterioration_test_outcomes]),
                                         callbacks = [tf.keras.callbacks.EarlyStopping(patience=1)])
     y_pred1 = full_model.predict([all_test_array3d, all_test_array2d])  
-    acc_PEWS_individual.append(accuracy_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1)))
-    recall_PEWS_individual.append(recall_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
-    precision_PEWS_individual.append(precision_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
-    F1_PEWS_individual.append(f1_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
+    acc_PEWS_individual.append(accuracy_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1)))
+    recall_PEWS_individual.append(recall_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    precision_PEWS_individual.append(precision_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    F1_PEWS_individual.append(f1_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
 
     keys = [i for i in full_model_history.history.keys()]
     AUC_PEWS_individual.append(full_model_history.history[keys[7]][-1])
     MSE_PEWS_individual.append(full_model_history.history[keys[5]][-1]) 
     MAE_PEWS_individual.append(full_model_history.history[keys[6]][-1]) 
 
-conf_mat3 = confusion_matrix(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1))
+conf_mat3 = confusion_matrix(np.argmax(y_pred1, axis = 1), np.argmax(all_test_outcomes[:, 8:11], axis = 1))
 
 results = {'acc_death_individual_mean' : np.mean(acc_death_individual), 
             'acc_death_individual_std' : np.std(acc_death_individual),
@@ -435,14 +457,14 @@ results = {'acc_death_individual_mean' : np.mean(acc_death_individual),
             'F1_PEWS_full_mean' : np.mean(F1_PEWS_full), 
             'F1_PEWS_full_std' : np.std(F1_PEWS_full)}
 
-a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/1Dnet_TCN_results_binary", "w")
+a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/1Dnet_TPCN_results_binary", "w")
 json.dump(results, a_file)
 a_file.close()
 
-conf_mat1
-conf_mat2
-conf_mat3
-conf_mat3_2
+print(conf_mat1)
+print(conf_mat2)
+print(conf_mat3)
+print(conf_mat3_2)
 
 """
 #### Now ablate bits

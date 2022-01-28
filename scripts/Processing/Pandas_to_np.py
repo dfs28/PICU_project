@@ -208,11 +208,13 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
         else:
             outcomes[position, 11] = array.loc[end_position, 'time_to_death']
 
-        #Time to deterioration as outcome (if not NA then 100 days to death)
-        if np.isnan(time_to_deteriorate):
+        #Time to deterioration as outcome (if NA then 100 days to deterioration)
+        if pd.isnull(time_to_deteriorate):
+                #100 days in hours
                 outcomes[position, 12] = 2400
         else:
-                outcomes[position, 12] = time_to_deteriorate
+                #Deterioration in hours
+                outcomes[position, 12] = time_to_deteriorate.seconds/3600
 
         ##Now get pointwise variables - could do median and mad depending on how scale to percentile looks?
         means = [np.mean(temp_array[:, i]) for i in range(np.shape(temp_array)[1])]

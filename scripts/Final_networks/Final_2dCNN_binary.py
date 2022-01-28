@@ -1,13 +1,13 @@
-### Script for testing of 1d convnet
+### Script for final testing of 2d convnet
 
 #Setup
 import tensorflow as tf
 from tensorflow import keras 
 from tensorflow.keras import layers
 import numpy as np
-from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, auc, confusion_matrix, roc_curve, precision_score, recall_score, f1_score
+import keras_tuner as kt
 import json
-import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, auc, confusion_matrix, roc_curve, precision_score, recall_score, f1_score
 
 #Read in the data
 data = np.load('/store/DAMTP/dfs28/PICU_data/np_arrays.npz')
@@ -24,7 +24,7 @@ def test_trainsplit(array, split):
     """
 
     #Flexibly choose dimension to split along
-    shape = array.shape
+    shape = array3d.shape
     z_dim = np.max(shape)
 
     #Ensure splits add up to 1, get indicies based on splits
@@ -46,31 +46,32 @@ def test_trainsplit(array, split):
     return split_array
 
 
-#Split up testing and outcomes
+### Split up test and train
+#Note that this has to be a 4d image with a single colour channel
 array3d = np.transpose(array3d, (0, 2, 1))
-split_array3d = test_trainsplit(array3d, np.array([70, 15, 15]))
+array_image = np.reshape(array3d, (array3d.shape[0], array3d.shape[1], array3d.shape[2], 1))
+input_time_image = keras.Input(shape = array_image.shape[1:])
+input_flat = keras.Input(shape = array2d.shape[1:])
+split_image = test_trainsplit(array_image, np.array([70, 15, 15]))
 split_array2d = test_trainsplit(array2d, np.array([70, 15, 15]))
 split_outcomes = test_trainsplit(outcomes, np.array([70, 15, 15]))
-split_array3d2 = test_trainsplit(array3d, np.array([85, 15]))
+split_array3d2 = test_trainsplit(array_image, np.array([85, 15]))
 split_array2d2 = test_trainsplit(array2d, np.array([85, 15]))
 split_outcomes2 = test_trainsplit(outcomes, np.array([85, 15]))
-train_array3d = split_array3d[0]
+
+train_image = split_image[0]
 train_array2d = split_array2d[0]
 train_outcomes = split_outcomes[0]
-test_array3d = split_array3d[1]
+test_image = split_image[1]
 test_array2d = split_array2d[1]
 test_outcomes = split_outcomes[1]
-validate_array3d = split_array3d[2]
-validate_array2d = split_array2d[2]
-validate_outcomes = split_outcomes[2]
+all_test_array3d = validate_image = split_image[2]
+all_test_array2d = validate_array2d = split_array2d[2]
+all_test_outcomes = validate_outcomes = split_outcomes[2]
 
 all_train_array3d = split_array3d2[0]
 all_train_array2d = split_array2d2[0]
 all_train_outcomes = split_outcomes2[0]
-
-all_test_array3d = split_array3d2[1]
-all_test_array2d = split_array2d2[1]
-all_test_outcomes = split_outcomes2[1]
 
 #Make the binary values
 binary_deterioration_train_outcomes = np.transpose(np.array([np.sum(all_train_outcomes[:, 8:9], axis = 1), np.sum(all_train_outcomes[:,9:11], axis = 1)]))
@@ -82,85 +83,54 @@ binary_death_test_outcomes = np.transpose(np.array([np.sum(all_test_outcomes[:, 
 binary_LOS_train_outcomes = np.transpose(np.array([np.sum(all_train_outcomes[:, 5:6], axis = 1), np.sum(all_train_outcomes[:,6:8], axis = 1)]))
 binary_LOS_test_outcomes = np.transpose(np.array([np.sum(all_test_outcomes[:, 5:6], axis = 1), np.sum(all_test_outcomes[:,5:6], axis = 1)]))
 
-def make_1DNET(model_type):
-    #Make the final net
-    kernal_regulariser = bias_regulariser = tf.keras.regularizers.l2(1e-5)
-    #tf.keras.regularizers.l1(l1_value)
-    #tf.keras.regularizers.l1_l2(l1 = l1_value, l2 = l2_value)
+### Now make the tunable model
 
-    #Set the input shape
-    input_shape3d = train_array3d.shape
-    input_timeseries = keras.Input(shape = input_shape3d[1:])
-    input_flat = keras.Input(shape = train_array2d.shape[1:])
+def make_2DNET(model_type):
+    #Set regularisers
+    init = initializer = tf.keras.initializers.GlorotUniform()
 
-    #Init
-    init = tf.keras.initializers.GlorotUniform()
+    # Convolutional input
+    x = layers.Conv2D(40, (3, 3), activation='relu', padding='same', kernel_initializer = init)(input_time_image)
 
-    ####Now make 1d conv net
-    # This is the encoder (drawn from autoencoder thing) - set the shape to be the shape of the timeseries data
-
-    x = layers.Conv1D(20, 15, activation='relu', padding = 'causal',  kernel_initializer = init,
-                    kernel_regularizer= kernal_regulariser,
-                    bias_regularizer= bias_regulariser)(input_timeseries)
-    x = layers.Conv1D(40, 40, activation='relu', padding = 'causal', kernel_initializer = init,
-                    kernel_regularizer= kernal_regulariser,
-                    bias_regularizer= bias_regulariser, 
-                    dilation_rate = 2)(x)
+    x = layers.MaxPooling2D((2,2 ), padding='same')(x)
         
-    x = layers.MaxPooling1D(2, padding = 'same')(x)
+    #Choose how many convolutional layers to have
+    filter_num2 = 48
+    filter_size2 = 4
+    pool_size2 = 3
 
-    x = layers.Conv1D(140, 15, activation='relu', padding = 'causal',  kernel_initializer = init,
-                    kernel_regularizer= kernal_regulariser,
-                    bias_regularizer= bias_regulariser, 
-                    dilation_rate = 3)(x)
-    x = layers.Conv1D(120, 5, activation='relu', padding = 'causal', kernel_initializer = init,
-                    kernel_regularizer= kernal_regulariser,
-                    bias_regularizer= bias_regulariser, 
-                    dilation_rate = 4)(x)
-        
-    x = layers.MaxPooling1D(4, padding = 'same')(x)
+    for i in range(1):
+        x = layers.Conv2D(filter_num2, (filter_size2, filter_size2), 
+                            activation='relu', padding='same', 
+                            kernel_initializer = init)(x)
+        x = layers.MaxPooling2D((pool_size2, pool_size2), padding='same')(x)
+
 
     ##Now make the other head with input
-    y = layers.Dense(20, activation = 'relu', kernel_initializer = init,
-                    kernel_regularizer= kernal_regulariser,
-                    bias_regularizer= bias_regulariser)(input_flat)
+    y = layers.Dense(20, activation = 'relu', kernel_initializer = init)(input_flat)
 
     #Now make the other head
     flattened = layers.Flatten()(x)
     concatted = layers.Concatenate()([y, flattened])
         
-    #With dropount
     concatted = layers.Dropout(0.5)(concatted)
 
-    dense2 = layers.Dense(40, activation = 'relu', use_bias = True, kernel_initializer = init,
-                        kernel_regularizer= kernal_regulariser,
-                        bias_regularizer= bias_regulariser)(concatted)
+    dense1 = layers.Dense(45, activation = 'relu', use_bias = True, kernel_initializer = init)(concatted)
+    dense2 = layers.Dense(35, activation = 'relu', use_bias = True, kernel_initializer = init)(dense1)
 
     #Make this a multihead output
-    death_head = layers.Dense(20, activation = 'relu', use_bias = True, kernel_initializer = init,
-                        kernel_regularizer= kernal_regulariser,
-                        bias_regularizer= bias_regulariser)(dense2)
-    death_head = layers.Dense(2, activation = 'softmax', use_bias = True, kernel_initializer = init,
-                        kernel_regularizer= kernal_regulariser,
-                        bias_regularizer= bias_regulariser)(death_head)
-    time_head = layers.Dense(20, activation = 'relu', use_bias = True, kernel_initializer = init,
-                        kernel_regularizer= kernal_regulariser,
-                        bias_regularizer= bias_regulariser)(dense2)
-    time_head = layers.Dense(2, activation = 'softmax', use_bias = True, kernel_initializer = init,
-                        kernel_regularizer= kernal_regulariser,
-                        bias_regularizer= bias_regulariser)(time_head)
-    PEWS_head = layers.Dense(20, activation = 'relu', use_bias = True, kernel_initializer = init,
-                        kernel_regularizer= kernal_regulariser,
-                        bias_regularizer= bias_regulariser)(dense2)
-    PEWS_head = layers.Dense(2, activation = 'softmax', use_bias = True, kernel_initializer = init,
-                        kernel_regularizer= kernal_regulariser,
-                        bias_regularizer= bias_regulariser)(PEWS_head)
+    death_head = layers.Dense(2, activation = 'softmax', use_bias = True, kernel_initializer = init)(dense2)
+    time_head = layers.Dense(2, activation = 'softmax', use_bias = True, kernel_initializer = init)(dense2)
+    PEWS_head = layers.Dense(2, activation = 'softmax', use_bias = True, kernel_initializer = init)(dense2)
 
     #This is the full model with death and LOS as the outcome
-    full_model = keras.Model([input_timeseries, input_flat], [death_head, time_head, PEWS_head])
-    death_model = keras.Model([input_timeseries, input_flat], death_head)
-    discharge_model = keras.Model([input_timeseries, input_flat], [time_head])
-    PEWS_model = keras.Model([input_timeseries, input_flat], [PEWS_head])
+    full_model_2d = keras.Model([input_time_image, input_flat], [death_head, time_head, PEWS_head])
+
+    #This is the full model with death and LOS as the outcome
+    full_model = keras.Model([input_time_image, input_flat], [death_head, time_head, PEWS_head])
+    death_model = keras.Model([input_time_image, input_flat], death_head)
+    discharge_model = keras.Model([input_time_image, input_flat], [time_head])
+    PEWS_model = keras.Model([input_time_image, input_flat], [PEWS_head])
     
     #Allow this to return one of 3 different model structures
     if model_type == 'full':
@@ -171,6 +141,9 @@ def make_1DNET(model_type):
         return discharge_model
     elif model_type == 'PEWS':
         return PEWS_model
+
+
+
 
 #Set up some storage for the different metrics
 AUC_death_full = list()
@@ -198,11 +171,11 @@ F1_PEWS_full = list()
 
 #Run this 10 times
 for i in range(10):
-    full_model = make_1DNET('full')
+    full_model = make_2DNET('full')
 
     full_model.compile(optimizer = 'adam', loss='binary_crossentropy',  metrics=['accuracy', 
                             'mse', tf.keras.metrics.MeanAbsoluteError(), 
-                            tf.keras.metrics.AUC()], loss_weights=[2, 2, 6])               
+                            tf.keras.metrics.AUC()])               
 
     #Dont forget to add batch size back in 160
     #Now fit the model
@@ -213,15 +186,15 @@ for i in range(10):
                                         validation_data = ([all_test_array3d, all_test_array2d], [binary_death_test_outcomes, binary_LOS_test_outcomes, binary_deterioration_test_outcomes]),
                                         callbacks = [tf.keras.callbacks.EarlyStopping(patience=1)])
     y_pred1, y_pred2, y_pred3 = full_model.predict([all_test_array3d, all_test_array2d])
-    recall_death_full.append(recall_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    recall_LOS_full.append(recall_score(np.argmax(y_pred2, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    recall_PEWS_full.append(recall_score(np.argmax(y_pred3, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
-    precision_death_full.append(precision_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    precision_LOS_full.append(precision_score(np.argmax(y_pred2, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    precision_PEWS_full.append(precision_score(np.argmax(y_pred3, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
-    F1_death_full.append(f1_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    F1_LOS_full.append(f1_score(np.argmax(y_pred2, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    F1_PEWS_full.append(f1_score(np.argmax(y_pred3, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
+    recall_death_full.append(recall_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    recall_LOS_full.append(recall_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred2, axis = 1), average = 'macro'))
+    recall_PEWS_full.append(recall_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred3, axis = 1), average = 'macro'))
+    precision_death_full.append(precision_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    precision_LOS_full.append(precision_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred2, axis = 1), average = 'macro'))
+    precision_PEWS_full.append(precision_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred3, axis = 1), average = 'macro'))
+    F1_death_full.append(f1_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    F1_LOS_full.append(f1_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred2, axis = 1), average = 'macro'))
+    F1_PEWS_full.append(f1_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred3, axis = 1), average = 'macro'))
 
     keys = [i for i in full_model_history.history.keys()]
     AUC_death_full.append(full_model_history.history[keys[23]][-1])
@@ -237,12 +210,6 @@ for i in range(10):
     MAE_LOS_full.append(full_model_history.history[keys[26]][-1]) 
     MAE_PEWS_full.append(full_model_history.history[keys[30]][-1]) 
     
-conf_mat1 = confusion_matrix(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1))
-conf_mat2 = confusion_matrix(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred2, axis = 1))
-conf_mat3_2 = confusion_matrix(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred3, axis = 1))
-#Aim to tune outputs of 1 and 3
-tf.keras.utils.plot_model(full_model, to_file='/mhome/damtp/q/dfs28/Project/PICU_project/models/1d_CNN_TCN_binary.png', show_shapes=True, expand_nested = True)
-
 
 #Storage for individual models
 AUC_death_individual = list()
@@ -269,7 +236,7 @@ F1_PEWS_individual = list()
 
 #Mortality prediction
 for i in range(10):
-    full_model = make_1DNET('death')
+    full_model = make_2DNET('death')
 
     full_model.compile(optimizer = 'adam', loss='binary_crossentropy', metrics = ['mse', tf.keras.metrics.MeanAbsoluteError(), 
                         tf.keras.metrics.AUC()])               
@@ -283,22 +250,19 @@ for i in range(10):
                                         validation_data = ([all_test_array3d, all_test_array2d], [binary_death_test_outcomes]),
                                         callbacks = [tf.keras.callbacks.EarlyStopping(patience=1)])
     y_pred1 = full_model.predict([all_test_array3d, all_test_array2d])  
-    acc_death_individual.append(accuracy_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1)))
-    recall_death_individual.append(recall_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    precision_death_individual.append(precision_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
-    F1_death_individual.append(f1_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_death_test_outcomes, axis = 1), average = 'macro'))
+    acc_death_individual.append(accuracy_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1)))
+    recall_death_individual.append(recall_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    precision_death_individual.append(precision_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    F1_death_individual.append(f1_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
 
     keys = [i for i in full_model_history.history.keys()]
     AUC_death_individual.append(full_model_history.history[keys[7]][-1])
     MSE_death_individual.append(full_model_history.history[keys[5]][-1]) 
     MAE_death_individual.append(full_model_history.history[keys[6]][-1]) 
 
-
-
-
 #LOS prediction
 for i in range(10):
-    full_model = make_1DNET('discharge')
+    full_model = make_2DNET('discharge')
 
     full_model.compile(optimizer = 'adam', loss='binary_crossentropy', metrics = ['mse', tf.keras.metrics.MeanAbsoluteError(), 
                         tf.keras.metrics.AUC()])               
@@ -312,10 +276,10 @@ for i in range(10):
                                         validation_data = ([all_test_array3d, all_test_array2d], [binary_LOS_test_outcomes]),
                                         callbacks = [tf.keras.callbacks.EarlyStopping(patience=1)])
     y_pred1 = full_model.predict([all_test_array3d, all_test_array2d])  
-    acc_LOS_individual.append(accuracy_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1)))
-    recall_LOS_individual.append(recall_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    precision_LOS_individual.append(precision_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
-    F1_LOS_individual.append(f1_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_LOS_test_outcomes, axis = 1), average = 'macro'))
+    acc_LOS_individual.append(accuracy_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1)))
+    recall_LOS_individual.append(recall_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    precision_LOS_individual.append(precision_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    F1_LOS_individual.append(f1_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
 
     keys = [i for i in full_model_history.history.keys()]
     AUC_LOS_individual.append(full_model_history.history[keys[7]][-1])
@@ -324,7 +288,7 @@ for i in range(10):
 
 #Deterioration prediction
 for i in range(10):
-    full_model = make_1DNET('PEWS')
+    full_model = make_2DNET('PEWS')
 
     full_model.compile(optimizer = 'adam', loss='binary_crossentropy', metrics = ['mse', tf.keras.metrics.MeanAbsoluteError(), 
                         tf.keras.metrics.AUC()])               
@@ -338,17 +302,15 @@ for i in range(10):
                                         validation_data = ([all_test_array3d, all_test_array2d], [binary_deterioration_test_outcomes]),
                                         callbacks = [tf.keras.callbacks.EarlyStopping(patience=1)])
     y_pred1 = full_model.predict([all_test_array3d, all_test_array2d])  
-    acc_PEWS_individual.append(accuracy_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1)))
-    recall_PEWS_individual.append(recall_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
-    precision_PEWS_individual.append(precision_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
-    F1_PEWS_individual.append(f1_score(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1), average = 'macro'))
+    acc_PEWS_individual.append(accuracy_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1)))
+    recall_PEWS_individual.append(recall_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    precision_PEWS_individual.append(precision_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
+    F1_PEWS_individual.append(f1_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
 
     keys = [i for i in full_model_history.history.keys()]
     AUC_PEWS_individual.append(full_model_history.history[keys[7]][-1])
     MSE_PEWS_individual.append(full_model_history.history[keys[5]][-1]) 
     MAE_PEWS_individual.append(full_model_history.history[keys[6]][-1]) 
-
-conf_mat3 = confusion_matrix(np.argmax(y_pred1, axis = 1), np.argmax(binary_deterioration_test_outcomes, axis = 1))
 
 results = {'acc_death_individual_mean' : np.mean(acc_death_individual), 
             'acc_death_individual_std' : np.std(acc_death_individual),
@@ -435,99 +397,9 @@ results = {'acc_death_individual_mean' : np.mean(acc_death_individual),
             'F1_PEWS_full_mean' : np.mean(F1_PEWS_full), 
             'F1_PEWS_full_std' : np.std(F1_PEWS_full)}
 
-a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/1Dnet_TCN_results_binary", "w")
+
+a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/2DCNN_results_binary", "w")
 json.dump(results, a_file)
 a_file.close()
 
-conf_mat1
-conf_mat2
-conf_mat3
-conf_mat3_2
-
-"""
-#### Now ablate bits
-#Make the final net
-kernal_regulariser = bias_regulariser = tf.keras.regularizers.l2(1e-5)
-#tf.keras.regularizers.l1(l1_value)
-#tf.keras.regularizers.l1_l2(l1 = l1_value, l2 = l2_value)
-
-#Set the input shape
-input_shape3d = train_array3d.shape
-input_timeseries = keras.Input(shape = input_shape3d[1:])
-input_flat = keras.Input(shape = train_array2d.shape[1:])
-
-#Init
-init = tf.keras.initializers.GlorotUniform()
-
-####Now make 1d conv net
-# This is the encoder (drawn from autoencoder thing) - set the shape to be the shape of the timeseries data
-x = layers.Conv1D(160, 32, activation='relu', padding = 'same',  kernel_initializer = init,
-                  kernel_regularizer= kernal_regulariser,
-                  bias_regularizer= bias_regulariser)(input_timeseries)
-x = layers.Conv1D(160, 32, activation='relu', padding = 'same', kernel_initializer = init,
-                  kernel_regularizer= kernal_regulariser,
-                  bias_regularizer= bias_regulariser)(x)
-    
-x = layers.MaxPooling1D(2, padding = 'same')(x)
-
-x = layers.Conv1D(140, 25, activation='relu', padding = 'same',  kernel_initializer = init,
-                  kernel_regularizer= kernal_regulariser,
-                  bias_regularizer= bias_regulariser)(input_timeseries)
-x = layers.Conv1D(140, 25, activation='relu', padding = 'same', kernel_initializer = init,
-                  kernel_regularizer= kernal_regulariser,
-                  bias_regularizer= bias_regulariser)(x)
-    
-x = layers.MaxPooling1D(2, padding = 'same')(x)
-
-
-##Now make the other head with input
-y = layers.Dense(20, activation = 'relu', kernel_initializer = init,
-                 kernel_regularizer= kernal_regulariser,
-                 bias_regularizer= bias_regulariser)(input_flat)
-
-#Now make the other head
-flattened = layers.Flatten()(x)
-concatted = layers.Concatenate()([y, flattened])
-    
-#With dropount
-concatted = layers.Dropout(0.5)(concatted)
-
-dense2 = layers.Dense(40, activation = 'relu', use_bias = True, kernel_initializer = init,
-                      kernel_regularizer= kernal_regulariser,
-                      bias_regularizer= bias_regulariser)(concatted)
-
-#Make this a multihead output
-death_head = layers.Dense(20, activation = 'relu', use_bias = True, kernel_initializer = init,
-                      kernel_regularizer= kernal_regulariser,
-                      bias_regularizer= bias_regulariser)(dense2)
-death_head = layers.Dense(3, activation = 'softmax', use_bias = True, kernel_initializer = init,
-                      kernel_regularizer= kernal_regulariser,
-                      bias_regularizer= bias_regulariser)(death_head)
-time_head = layers.Dense(20, activation = 'relu', use_bias = True, kernel_initializer = init,
-                      kernel_regularizer= kernal_regulariser,
-                      bias_regularizer= bias_regulariser)(dense2)
-time_head = layers.Dense(3, activation = 'softmax', use_bias = True, kernel_initializer = init,
-                      kernel_regularizer= kernal_regulariser,
-                      bias_regularizer= bias_regulariser)(time_head)
-PEWS_head = layers.Dense(20, activation = 'relu', use_bias = True, kernel_initializer = init,
-                      kernel_regularizer= kernal_regulariser,
-                      bias_regularizer= bias_regulariser)(dense2)
-PEWS_head = layers.Dense(3, activation = 'softmax', use_bias = True, kernel_initializer = init,
-                      kernel_regularizer= kernal_regulariser,
-                      bias_regularizer= bias_regulariser)(PEWS_head)
-
-#This is the full model with death and LOS as the outcome
-ablated_full_model1 = keras.Model([input_timeseries, input_flat], [death_head, time_head, PEWS_head])
-ablated_full_model1.compile(optimizer = 'adam', loss='categorical_crossentropy',  metrics=['accuracy', 
-                        'mse', tf.keras.metrics.MeanAbsoluteError(), 
-                        tf.keras.metrics.AUC()])               
-
-#Dont forget to add batch size back in 160
-#Now fit the model
-ablated_full_model1_history = ablated_full_model1.fit([train_array3d, train_array2d], [train_outcomes[:, 2:5], train_outcomes[:, 5:8], train_outcomes[:, 8:11]],
-                                    epochs = 20,
-                                    batch_size = 160,
-                                    shuffle = True, 
-                                    validation_data = ([test_array3d, test_array2d], [test_outcomes[:, 2:5], test_outcomes[:, 5:8], test_outcomes[:, 8:11]]),
-                                    callbacks = [tf.keras.callbacks.EarlyStopping(patience=2)])
-"""
+#tf.keras.utils.plot_model(full_model, to_file='/mhome/damtp/q/dfs28/Project/PICU_project/models/2dCNN.png', show_shapes=True, expand_nested = True)
