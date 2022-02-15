@@ -127,7 +127,7 @@ series_cols_std = ['STD ' + i for i in series_cols]
 series_cols_slopes = ['Slopes ' + i for i in series_cols]
 series_cols_R = ['R ' + i for i in series_cols]
 all_cols = series_cols_mean
-all_cols.extend(series_cols_std)
+#all_cols.extend(series_cols_std)
 all_cols.extend(series_cols_slopes)
 all_cols.extend(series_cols_R)
 
@@ -229,7 +229,7 @@ ax.invert_yaxis()  # labels read top-to-bottom
 ax.set_xlabel('Gain (feature importance)')
 ax.set_title('Feature importance for Deterioration')
 plt.subplots_adjust(left=0.3)
-fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/XGBoost_importance_deterioration_only_binary.png')
+fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/XGBoost_importance_deterioration_only_binary_no_std.png')
 
 
 
@@ -244,7 +244,7 @@ explainer = shap.TreeExplainer(clf1)
 shap_values = explainer.shap_values(X_test)
 np.abs(shap_values.sum(1) + explainer.expected_value - pred).max()
 shap.summary_plot(shap_values, X_test, feature_names = feature_names1)
-fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/SHAP_xgboost_binary_summary.png')
+fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/SHAP_xgboost_binary_no_std_summary.png')
 
 #Pure features
 explainer.feature_names = feature_names1

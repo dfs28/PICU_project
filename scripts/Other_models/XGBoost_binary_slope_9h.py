@@ -220,14 +220,15 @@ results = {'acc_PEWS' : np.mean(accuracy),
             'MAE_PEWS' : np.mean(MAE), 
             'precision_PEWS' : np.mean(Precision), 
             'recall_PEWS' : np.mean(Recall), 
-            'F1_PEWS' : np.mean(F1)}
+            'F1_PEWS' : np.mean(F1), 
+            'AUPRC_PEWS' : np.mean(AUPRC)}
 
 a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/XGBoost_results_slope_9h_binary", "w")
 json.dump(results, a_file)
 a_file.close()
 
 
-"""
+
 conf_mat1 = confusion_matrix(y_test, y_pred)
 
 #Tune to sensitivity
