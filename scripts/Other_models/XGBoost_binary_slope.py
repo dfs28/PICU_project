@@ -16,6 +16,9 @@ from sklearn.metrics import accuracy_score, average_precision_score, roc_auc_sco
 import matplotlib.pyplot as plt
 from skopt import BayesSearchCV
 
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import KFold, cross_validate, cross_val_predict
+
 #Read in the data
 #Consider binning unnecessary vars (r, std or just slopes in general)
 data = np.load('/store/DAMTP/dfs28/PICU_data/np_arrays.npz')
@@ -82,6 +85,8 @@ test_outcomes = split_outcomes[1]
 #Make the binary values
 binary_deterioration_train_outcomes = np.transpose(np.array([np.sum(train_outcomes[:, 8:9], axis = 1), np.sum(train_outcomes[:,9:11], axis = 1)]))
 binary_deterioration_test_outcomes = np.transpose(np.array([np.sum(test_outcomes[:, 8:9], axis = 1), np.sum(test_outcomes[:,9:11], axis = 1)]))
+
+binary_deterioration_outcomes = np.transpose(np.array([np.sum(outcomes[:, 8:9], axis = 1), np.sum(outcomes[:,9:11], axis = 1)]))
 
 
 
@@ -211,6 +216,11 @@ precision[tpr > 0.9][0]
 y_tuned_sensitivity = (y_pred_ratio > thresholds[tpr > 0.9][0]).astype(int)
 confusion_matrix((y_pred_proba[:,1] > thresholds[tpr > 0.9][0]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
 
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import PrecisionRecallDisplay
+
+prec, recall, _ = precision_recall_curve(y_test, y_pred_proba[:,1], pos_label=clf1.classes_[1])
+pr_display = PrecisionRecallDisplay(precision=prec, recall=recall).plot()
 
 #Importance plot
 feature_importance1 = clf1.feature_importances_
@@ -260,3 +270,58 @@ precision
 recall
 
 thresholds
+
+
+
+
+
+
+### Look at just using PEWS for the logistic regression
+## Input PEWS into logistic regression
+series_cols = data['series_cols']
+PEWS = array3d[:, series_cols == 'PEWS', :]
+PEWS = PEWS.reshape(PEWS.shape[0], PEWS.shape[2])
+last_PEWS = PEWS[:, -1:]
+clf_PEWS = LogisticRegression(random_state=0, max_iter= 100, multi_class='multinomial', solver='lbfgs', penalty = 'l2')
+scores1_last_PEWS_PEWS = cross_validate(clf_PEWS, last_PEWS, np.argmax(binary_deterioration_outcomes, axis = 1) , scoring = ['roc_auc_ovr', 'accuracy', 'precision', 'recall'], cv = 10)
+
+y_predict = cross_val_predict(clf_PEWS, last_PEWS, np.argmax(binary_deterioration_outcomes, axis = 1), cv=10, method = 'predict_proba')
+
+means3_last_PEWS_PEWS = [np.mean(scores1_last_PEWS_PEWS[i]) for i in scores1_last_PEWS_PEWS.keys()]
+stds3_last_PEWS_PEWS = [np.std(scores1_last_PEWS_PEWS[i]) for i in scores1_last_PEWS_PEWS.keys()]
+
+#Tune to sensitivity
+#Use ratio of outcome 3 to 1
+y_pred_ratio = y_predict[:, 0]/ y_predict[:, 1]
+y_pred_ratio1 = y_predict[:, 1]/ y_predict[:, 0]
+
+#Work out best threshold
+fpr, tpr, thresholds = roc_curve(1- np.argmax(binary_deterioration_outcomes, axis = 1), y_predict[:,1])
+gmeans = np.sqrt(tpr * (1-fpr))
+ix = np.argmax(gmeans)
+print('Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], gmeans[ix]))
+
+fpr1, tpr1, thresholds1 = roc_curve(1- np.argmax(binary_deterioration_outcomes, axis = 1), y_predict[:,1])
+
+#Get the tuned best
+y_tuned = (y_predict[:,1] > thresholds[ix]).astype(int)
+confusion_matrix((y_predict[:,1] > thresholds[ix]).astype(int), np.argmax(binary_deterioration_outcomes, axis = 1))
+
+#Now calculate precision given a 90% sensitivity
+precision = tpr/(fpr + tpr)
+precision[tpr > 0.9][0]
+
+y_tuned_sensitivity = (y_pred_ratio > thresholds[tpr > 0.9][0]).astype(int)
+confusion_matrix((y_pred_proba[:,1] > thresholds[tpr > 0.9][0]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
+
+average_precision_score(binary_deterioration_outcomes, y_predict)
+f1_score(np.round(1- np.argmax(binary_deterioration_outcomes, axis = 1)), np.round(y_predict[:,1]))
+
+prec, recall, _ = precision_recall_curve(binary_deterioration_outcomes[:,1], y_predict[:,1])
+pr_display1 = PrecisionRecallDisplay(precision=prec, recall=recall).plot()
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 8))
+
+pr_display.plot(ax=ax1)
+pr_display1.plot(ax=ax2)
+plt.show()
