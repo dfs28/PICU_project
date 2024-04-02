@@ -23,7 +23,7 @@ import re
 
 #Read in the data
 #Consider binning unnecessary vars (r, std or just slopes in general)
-data = np.load('/store/DAMTP/dfs28/PICU_data/np_arrays_pSOFA.npz')
+data = np.load('/store/DAMTP/dfs28/PICU_data/np_arrays_no_zscore.npz')
 array3d = data['d3']
 array2d = data['d2']
 outcomes = data['outcomes']
@@ -32,30 +32,40 @@ splines = data['splines']
 slopes = data['slopes']
 r_values = data['r_values']
 
-#Pull out the data where there was no z score and then use the noz SBP/DBP/MAP data to see if that improves outcomes
-data_noz = np.load('/store/DAMTP/dfs28/PICU_data/np_arrays_no_zscore.npz')
-characteristics_noz = data_noz['chars']
-slopes_noz = data_noz['slopes']
-r_values_noz = data_noz['r_values']
+#With z score
+data_z = np.load('/store/DAMTP/dfs28/PICU_data/np_arrays.npz')
+array2d_z = data_z['d2']
+characteristics_z = data_z['chars']
+slopes_z = data_z['slopes']
+r_values_z = data_z['r_values']
 
-#Repeat for the no_z data
-#Combine the series cols objects and name them for labelling of axes
-series_cols_noz = data_noz['series_cols']
+#Combine the point and series cols objects to pull out where the z score data we want to use is
+series_cols_z = data_z['series_cols']
 series_cols = data['series_cols']
-BP_values_noz = ['SysBP', 'DiaBP', 'MAP']
-BP_locations_noz = np.where([i in BP_values_noz for i in series_cols_noz])[0]
-BP_values = ['SBP_zscore', 'DBP_zscore', 'MAP_zscore']
-BP_locations = np.where([i in BP_values for i in series_cols])[0]
+KG_values_z = ['O2Flow.kg', 'Inotropes_kg', 'Urine_output_kg']
+KG_locations_z = np.where([i in KG_values_z for i in series_cols_z])[0]
+KG_values = ['O2Flow', 'Inotropes', 'Urine_output']
+KG_locations = np.where([i in KG_values for i in series_cols])[0]
+
+point_cols_z = data_z['point_cols']
+point_cols = data['point_cols']
+weight_value_z = ['Weight_z_scores']
+weight_location_z = np.where([i in weight_value_z for i in point_cols_z])[0]
+weight_value = ['interpolated_wt_kg']
+weight_location = np.where([i in weight_value for i in point_cols])[0]
 
 #Substitute no_z values into characteristics, slopes, R
-characteristics[:,[BP_locations, BP_locations*2]] = characteristics_noz[:,[BP_locations_noz, BP_locations_noz*2]]
-slopes[:, BP_locations] = slopes_noz[:, BP_locations_noz]
-r_values[:, BP_locations] = r_values_noz[:, BP_locations_noz]
+characteristics[:,[KG_values, KG_values*2]] = characteristics_z[:,[KG_values_z, KG_locations_z*2]]
+slopes[:, KG_values] = slopes_z[:, KG_locations_z]
+r_values[:, KG_locations] = r_values_z[:, KG_locations_z]
 
 #Adjust series colnames
 series_cols = data['series_cols']
-series_cols[BP_locations] = series_cols_noz[BP_locations_noz]
+series_cols[KG_locations] = series_cols_z[KG_locations_z]
 
+#Adjust the point values
+array2d[:, weight_location] = array2d_z[:, weight_location_z]
+point_cols[weight_location[0]] = point_cols_z[weight_location_z[0]]
 
 
 def test_trainsplit(array, split):
@@ -115,6 +125,8 @@ binary_deterioration_test_outcomes = np.transpose(np.array([np.sum(test_outcomes
 
 binary_deterioration_outcomes = np.transpose(np.array([np.sum(outcomes[:, 8:9], axis = 1), np.sum(outcomes[:,9:11], axis = 1)]))
 
+
+
 #Set x and y
 X = np.concatenate((train_array2d, train_characteristics, train_slopes, train_R), axis=1)
 y = np.argmax(binary_deterioration_train_outcomes, axis = 1)
@@ -147,9 +159,9 @@ else:
        param_grid = json.load(f)
 
 #get colnames
-point_cols = data['point_cols']
+#point_cols = data['point_cols']
 point_cols = [i for i in point_cols]
-#series_cols = data['series_cols'] - now pulled and adjusted above
+#series_cols = data['series_cols']
 
 #Combine the series cols objects and name them for labelling of axes
 series_cols_mean = ['Mean ' + i for i in series_cols]
@@ -219,7 +231,7 @@ results = {'acc_PEWS' : np.mean(accuracy),
             'F1_PEWS' : np.mean(F1),
             'AUPRC_PEWS' : np.mean(AUPRC)}
 
-a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/XGBoost_results_slope_binary_no_map", "w")
+a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/XGBoost_results_slope_binary_no_zscore_with_weight_norm", "w")
 json.dump(results, a_file)
 a_file.close()
 
@@ -308,7 +320,6 @@ fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/XGBoost
 
 
 
-
 #Redo best thresholds using PRC function
 precision_calc, recall_calc, thresholds_prc = precision_recall_curve(y_test, y_pred_proba[:,1], pos_label=clf1.classes_[1])
 precision_calc[recall_calc > 0.9][-1]
@@ -327,13 +338,12 @@ import shap
 #Summary plot
 explainer = shap.TreeExplainer(clf1)
 shap_values = explainer.shap_values(X_test)
-feature_names1 =  point_cols + all_cols
 np.abs(shap_values.sum(1) + explainer.expected_value - pred).max()
 
 
 fig, ax = plt.subplots(1, 1, figsize = (15, 11))
 shap.summary_plot(shap_values, X_test, feature_names = feature_names1, title = 'SHAP values for all patients model')
-fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/SHAP_xgboost_binary_summary.png', bbox_inches = 'tight')
+fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/SHAP_xgboost_binary_summary_no_z_weight.png', bbox_inches = 'tight')
 
 #Summary plot for not on inotropes
 explainer2 = shap.TreeExplainer(clf2)
@@ -341,7 +351,7 @@ shap_values2 = explainer2.shap_values(X_test_on_inotropes)
 np.abs(shap_values2.sum(1) + explainer2.expected_value - pred).max()
 fig, ax = plt.subplots(1, 1, figsize = (15, 11))
 shap.summary_plot(shap_values2, X_test_on_inotropes, feature_names = feature_names1, title = 'SHAP values for only inotropes model')
-fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/SHAP_xgboost_binary_summary_inotropes.png', bbox_inches = 'tight')
+fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/SHAP_xgboost_binary_summary_inotropes_no_z_weight.png', bbox_inches = 'tight')
 
 #Pure features
 explainer.feature_names = feature_names1
@@ -354,14 +364,6 @@ explainer2.feature_names = feature_names1
 shap_explainer2 = explainer2(X_test_on_inotropes)
 shap_explainer2.feature_names = feature_names1
 shap.plots.bar(shap_explainer2, max_display=30)
-
-#Shap waterfall plot
-shap_values_waterfall = explainer(X_test)
-shap_values_waterfall.feature_names = feature_names1
-fig, ax = plt.subplots(1,1, figsize = (15,11))
-shap.plots.waterfall(shap_values_waterfall[y_pred_proba[:,1].argsort()[-1002]])
-fig.savefig('/mhome/damtp/q/dfs28/Project/PICU_project/figs/PICU/XGBoost/SHAP_xgboost_binary_waterfall.png', bbox_inches = 'tight')
-
 
 #Plot precision recall curve
 from sklearn.metrics import precision_recall_curve
@@ -418,21 +420,8 @@ confusion_matrix((y_pred_proba[:,1] > thresholds[tpr > 0.9][0]).astype(int), np.
 average_precision_score(binary_deterioration_outcomes, y_predict)
 f1_score(np.round(1- np.argmax(binary_deterioration_outcomes, axis = 1)), np.round(y_predict[:,1]))
 
-fig, ax = plt.subplots(1,1)
 prec, recall, _ = precision_recall_curve(binary_deterioration_outcomes[:,1], y_predict[:,1])
-#pr_display1 = PrecisionRecallDisplay(precision=prec, recall=recall).plot()
-
-# plot the precision-recall curves
-no_skill = len(binary_deterioration_outcomes[:,1][binary_deterioration_outcomes[:,1]==1]) / len(binary_deterioration_outcomes[:,1])
-ax.plot([0, 1], [no_skill, no_skill], linestyle='--', label='No Skill')
-ax.plot(prec, recall, marker='.', label='PEWS')
-# axis labels
-ax.xlabel('Recall')
-ax.ylabel('Precision')
-# show the legend
-ax.legend()
-# show the plot
-plt.show()
+pr_display1 = PrecisionRecallDisplay(precision=prec, recall=recall).plot()
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
 ax1.set_ylim((0, 1))
@@ -445,6 +434,7 @@ pr_display1.plot(ax=ax2)
 plt.show()
 
 
+#We can have a look at their flowsheet and other events
 
 
 
@@ -545,28 +535,5 @@ plt.show()
 
 
 
-#Next to do = choose only the columns we are interested in
 
-i = 7
-flowsheet_not_na.iloc[:, [2, i]].dropna().plot(x = 'taken_datetime', y = flowsheet_not_na.columns[i])
-i
-plt.show()
-i +=1 #13 temp, 25 urine output, 26 urine and stool, 31 comfort score 42 ventilator etco2, 43 expired minute volume, 44 ventialtor expired total vol
-#Don't need to just look at those who have died. Maybe plot predictions (and timings) against BP and find one where it makes a really useful prediction
-flowsheet_not_na
-
-demographics.project_id[demographics.loc[:,demographics.columns[3]].notna()]
-
-ages = pd.to_timedelta(demographics.death_date[demographics.loc[:,demographics.columns[3]].notna()] - demographics.birth_date[demographics.loc[:,demographics.columns[3]].notna()])
-age_years = ages.dt.days/365
-
-np.round(outcomes[:,1])
-np.round(age_years)
-
-demographics.project_id.unique().shape
-
-np.round()
-
-
-
-
+# Plan to calculate importance when patients aren't on inotropes

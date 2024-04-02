@@ -237,25 +237,13 @@ y_pred_proba = clf1.predict_proba(X_test)
 y_pred_ratio = y_pred_proba[:, 0]/ y_pred_proba[:, 1]
 y_pred_ratio1 = y_pred_proba[:, 1]/ y_pred_proba[:, 0]
 
-#Work out best threshold
-fpr, tpr, thresholds = roc_curve(1- np.argmax(binary_deterioration_test_outcomes, axis = 1), y_pred_proba[:,1])
-gmeans = np.sqrt(tpr * (1-fpr))
-ix = np.argmax(gmeans)
-print('Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], gmeans[ix]))
+precision_calc, recall_calc, thresholds_prc = precision_recall_curve(y_test, y_pred_proba[:,1], pos_label=clf1.classes_[1])
+precision_calc[recall_calc > 0.9][-1]
 
-fpr1, tpr1, thresholds1 = roc_curve(1- np.argmax(binary_deterioration_test_outcomes, axis = 1), y_pred_proba[:,1])
+y_tuned_sensitivity = (y_pred_ratio > thresholds_prc[np.where(recall_calc > 0.9)[0][-1]]).astype(int)
+tuned_conf_mat = confusion_matrix((y_pred_proba[:,1] > thresholds_prc[np.where(recall_calc > 0.9)[0][-1]]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
 
-#Get the tuned best
-y_tuned = (y_pred_proba[:,1] > thresholds[ix]).astype(int)
-confusion_matrix((y_pred_proba[:,1] > thresholds[ix]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
-
-#Now calculate precision given a 90% sensitivity
-precision = tpr/(fpr + tpr)
-precision[tpr > 0.9][0]
-
-y_tuned_sensitivity = (y_pred_ratio > thresholds[tpr > 0.9][0]).astype(int)
-confusion_matrix((y_pred_proba[:,1] > thresholds[tpr > 0.9][0]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
-
+f1_score((y_pred_proba[:,1] > thresholds_prc[np.where(recall_calc > 0.9)[0][-1]]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
 
 #Importance plot
 feature_importance1 = clf1.feature_importances_

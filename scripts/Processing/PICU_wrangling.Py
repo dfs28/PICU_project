@@ -603,7 +603,7 @@ def fill_missing(original_column, sheet, new_col, missing = np.nan):
     sheet.loc[na_locs, new_col] = 1
     sheet.loc[na_locs, original_column] = missing
 
-def interpolate_cols(column, sheet, method, *args, how_far = 60, limit_direction = 'both', fill = 0):
+def interpolate_cols(column, sheet, method, *args, how_far = 90, limit_direction = 'both', fill = 0):
     """ 
     Function to interpolate some columns \n
     Method, how_far, limit_direction inherit from pd.interpolate \n
@@ -634,8 +634,14 @@ def interpolate_cols(column, sheet, method, *args, how_far = 60, limit_direction
 #Median fill for BP and HR
 HR_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/HR_meansd.csv')
 RR_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/RR_meansd.csv')
+MAP_male_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/MAP_meansd_male.csv')
+MAP_female_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/MAP_meansd_female.csv')
+DBP_male_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/DBP_meansd_male.csv')
+DBP_female_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/DBP_meansd_female.csv')
+SBP_male_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/SBP_meansd_male.csv')
+SBP_female_meansd = pd.read_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/SBP_meansd_female.csv')
 
-def fill_median_HRBP(column, sheet, typeHRBP):
+def fill_median_HRBP(column, sheet, sex, typeHRBP):
     """Function to fill in median values where BP missing despite interpolation
     Takes a column to fill, sheet, and type should be one of 'SBP', 'DBP' or 'MAP', 'BP', 'HR' or 'RR'
     """
@@ -645,7 +651,7 @@ def fill_median_HRBP(column, sheet, typeHRBP):
 
     #Set up the median values
     if typeHRBP in ['BP', 'SBP', 'DBP', 'MAP']:
-        age = [0.008, 1, 2, 5, 8, 12, 25]
+        age = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 25]
     elif typeHRBP in ['HR', 'RR']:
         age = HR_meansd['age']
     else:
@@ -694,7 +700,7 @@ def remove_punct(column, new_column, sheet, punct_query):
 ### Add in lab components
 
 
-if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv') == False):
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv.gz') == False):
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
     print("Starting labs at", current_time)
@@ -764,7 +770,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv') == False):
     make_new_columns('POCCL_Chloride POC_mmol/L', labs, ['Cl'], True)
 
     #Cr
-    remove_punct('CREAT_Creatinine_umol/L', 'CRP', labs, '(>|<)(.+)')
+    remove_punct('CREAT_Creatinine_umol/L', 'Cr', labs, '(>|<)(.+)')
 
     #Hb
     make_new_columns('POCCTHB_ctHb POC_g/L', labs, ['Hb'], True)
@@ -883,7 +889,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv') == False):
     labs['taken_datetime'] = labs['collected_datetime']
     lab_cols = ['project_id', 'taken_datetime', 'ALT', 'Albumin', 'AlkPhos', 'AST', 'Aspartate', 
             'Amylase', 'APTT', 'Anion_gap', 'Base_excess', 'Basophils', 
-            'Bicarb', 'pH', 'Blood_culture', 'CRP', 'Ca2+', 'Cl', 'Eosinophils', 
+            'Bicarb', 'pH', 'Blood_culture', 'Cr', 'CRP', 'Ca2+', 'Cl', 'Eosinophils', 
             'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT%', 'HCT', 'INR', 
             'Lactate', 'Lymphs', 'Mg', 'Monocytes', 'Neuts', 'P50', 'PaCO2', 
             'PcCO2', 'PmCO2', 'PaO2', 'PcO2', 'PmO2', 'PO2', 'PvCO2', 
@@ -891,13 +897,13 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv') == False):
 
     flowsheet = pd.merge(flowsheet, labs.loc[:, lab_cols], how = 'outer', on = ['project_id', 'taken_datetime'])
     print('Flowsheet merged')
-    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv.gz')
     print('Flowsheet with labs saved')
 else:
     print('Flowsheet with labs already produced')
 
-if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv') == False):
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv', parse_dates = ['taken_datetime'])
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv.gz') == False):
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs.csv.gz', parse_dates = ['taken_datetime'])
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -931,15 +937,15 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv') == Fa
     print('Adding all times')
     flowsheet = all_times.merge(flowsheet, how = 'outer', on = ['taken_datetime', 'project_id'])
     print('Saving all times')
-    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv.gz')
     print('Times saved')
 else:
     print('Times already added')
 #### Now do some feature engineering
 
 
-if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv') == False):
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv', parse_dates = ['taken_datetime'])
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv.gz') == False):
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_all_times.csv.gz', parse_dates = ['taken_datetime'])
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -948,7 +954,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv
     #Interpolate labs maximum 4 days
     lab_vars = ['ALT', 'Albumin', 'AlkPhos', 'AST', 'Aspartate', 
                 'Amylase', 'APTT', 'Anion_gap', 'Base_excess', 'Basophils', 
-                'Bicarb', 'pH', 'Blood_culture', 'CRP', 'Ca2+', 'Cl', 'Eosinophils', 
+                'Bicarb', 'pH', 'Blood_culture', 'Cr', 'CRP', 'Ca2+', 'Cl', 'Eosinophils', 
                 'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT%', 'HCT', 'INR', 
                 'Lactate', 'Lymphs', 'Mg', 'Monocytes', 'Neuts', 'P50', 'PaCO2', 
                 'PcCO2', 'PmCO2', 'PaO2', 'PcO2', 'PmO2', 'PO2', 'PvCO2', 
@@ -968,7 +974,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv
     current_time = now.strftime("%H:%M:%S")
     print("Writing lab interpolation at", current_time)
 
-    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv.gz')
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -977,9 +983,9 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv
 
 
 ### Get demographics
-if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv') == False:
+if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv.gz') == False:
     print('Reading in flowsheet')
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv', parse_dates = ['taken_datetime'])
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_labs_interpolated.csv.gz', parse_dates = ['taken_datetime'])
 
     print('Applying demographics')
     apply_demographic('birth_date', demographics, flowsheet, 'Age_yrs')
@@ -990,7 +996,7 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.c
     apply_demographic('ethnicity_name', demographics, flowsheet, 'ethnicity', False)
 
     print('Saving applied demographics')
-    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv.gz')
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -1000,9 +1006,9 @@ else:
 
 
 
-if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv') == False):
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv.gz') == False):
 
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv', parse_dates = ['taken_datetime'])
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_demographics_applied.csv.gz', parse_dates = ['taken_datetime'])
 
     #Bodyweight
     #print_all(flowsheet)
@@ -1332,22 +1338,22 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpola
     fill_missing('ETCO2', flowsheet, 'ETCO2_missing')
 
     #Now do interpolation
-    interpolate_cols('Ventilation', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
-    interpolate_cols('O2Flow/kg', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
-    interpolate_cols('IPAP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
-    interpolate_cols('EPAP', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
-    interpolate_cols('FiO2', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0.21)
-    interpolate_cols('HFO', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
-    interpolate_cols('Tracheostomy', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
-    interpolate_cols('Ventilation(ml)', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
-    interpolate_cols('MeanAirwayPressure', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
-    interpolate_cols('ETCO2', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+    interpolate_cols('Ventilation', flowsheet, 'pad', how_far = 90, limit_direction = 'forward', fill = 0)
+    interpolate_cols('O2Flow/kg', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
+    interpolate_cols('IPAP', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
+    interpolate_cols('EPAP', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
+    interpolate_cols('FiO2', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0.21)
+    interpolate_cols('HFO', flowsheet, 'pad', how_far = 90, limit_direction = 'forward', fill = 0)
+    interpolate_cols('Tracheostomy', flowsheet, 'pad', how_far = 90, limit_direction = 'forward', fill = 0)
+    interpolate_cols('Ventilation(ml)', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
+    interpolate_cols('MeanAirwayPressure', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
+    interpolate_cols('ETCO2', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
     print("Saving ventilation at", current_time)
 
-    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv.gz')
 else:
     print('Ventilation already interpolated')
 
@@ -1363,8 +1369,8 @@ calculate this from the SBP and DBP columns - should possibly change the functio
 a MAP/ have the function calls not to produce MAP
 """
 
-if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv') == False):
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv', parse_dates = ['taken_datetime'])
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_pSOFA_interpolated.csv.gz') == False):
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_ventilation_interpolated.csv.gz', parse_dates = ['taken_datetime'])
     
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -1422,9 +1428,9 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     fill_missing('DiaBP', flowsheet, 'DiaBP_missing')
     fill_missing('MAP', flowsheet, 'MAP_missing')
 
-    interpolate_cols('SysBP', flowsheet, 'linear', 'SBP', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
-    interpolate_cols('DiaBP', flowsheet, 'linear', 'DBP', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
-    interpolate_cols('MAP', flowsheet, 'linear', 'MAP', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
+    interpolate_cols('SysBP', flowsheet, 'linear', 'SBP', how_far = 90, limit_direction = 'both', fill = fill_median_HRBP)
+    interpolate_cols('DiaBP', flowsheet, 'linear', 'DBP', how_far = 90, limit_direction = 'both', fill = fill_median_HRBP)
+    interpolate_cols('MAP', flowsheet, 'linear', 'MAP', how_far = 90, limit_direction = 'both', fill = fill_median_HRBP)
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -1445,7 +1451,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     fill_missing('HR', flowsheet, 'HR_missing')
 
     #Should probably do something as above with median HR
-    interpolate_cols('HR', flowsheet, 'linear', 'HR', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
+    interpolate_cols('HR', flowsheet, 'linear', 'HR', how_far = 90, limit_direction = 'both', fill = fill_median_HRBP)
 
 
 
@@ -1524,8 +1530,8 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
 
     fill_missing('GCS', flowsheet, 'GCS_missing')
     fill_missing('AVPU', flowsheet, 'AVPU_missing')
-    interpolate_cols('GCS', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 15)
-    interpolate_cols('AVPU', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 3)
+    interpolate_cols('GCS', flowsheet, 'pad', how_far = 90, limit_direction = 'forward', fill = 15)
+    interpolate_cols('AVPU', flowsheet, 'pad', how_far = 90, limit_direction = 'forward', fill = 3)
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -1554,7 +1560,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     make_new_columns('R PVS CAPILLARY REFILL RLE', flowsheet, ['CRT'], newcols1 = crt357)
 
     fill_missing('CRT', flowsheet, 'CRT_missing')
-    interpolate_cols('CRT', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 2)
+    interpolate_cols('CRT', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 2)
 
 
 
@@ -1569,7 +1575,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     #R PERF NORMALISED SAO2_%
     make_new_columns('R PERF NORMALISED SAO2_%', flowsheet, ['SpO2'], True)
     #R GOSH CV SATURATION NEW_%
-    make_new_columns('R GOSH CV SATURATION NEW_%', flowsheet, ['SpO2'], True)
+    make_new_columns('R GOSH CV SATURATION NEW_%', flowsheet, ['ScvO2'], True)
     #PERF PRIME BG POC SO2_%
     make_new_columns('PERF PRIME BG POC SO2_%', flowsheet, ['SpO2'], True)
     #ANAESTHESIA PULSE OXIMETRY_%
@@ -1586,7 +1592,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     make_new_columns('R CV SYSTEMIC ARTERIAL O2 SATURATION_%', flowsheet, ['SpO2'], True)
 
     fill_missing('SpO2', flowsheet, 'SpO2_missing')
-    interpolate_cols('SpO2', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 95)
+    interpolate_cols('SpO2', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 95)
 
 
 
@@ -1696,7 +1702,7 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     make_new_columns('R ECMO HEAT EXCHANGER WATER LEVEL', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 280, 2, 2))
     make_new_columns('R HOURS ON ECMO', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 295, 2, 2))
     make_new_columns('R GOSH ECMO NUMBER CIRCUITS', flowsheet, ['ECMO'], new_cols1 = make_allnonNa(flowsheet, 423, 2, 2))
-    fill_missing('ECMO', flowsheet, 'ECMO_missing')
+    fill_missing('ECMO', flowsheet, 'ECMO_missing')    
 
     #Other organ support
     print_all(flowsheet)
@@ -1737,11 +1743,14 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
         
 
     sum_inout('Adj_adrenaline', flowsheet, 'Inotropes')
+    sum_inout('Adj_adrenaline', flowsheet, 'Norad_adrenaline')
     sum_inout('R GOSH NORADRENALINE HOURLY VOLUME_mL', flowsheet, 'Inotropes')
+    sum_inout('R GOSH NORADRENALINE HOURLY VOLUME_mL', flowsheet, 'Norad_adrenaline')
 
     def corAVP(input):
         return input*2.5
     conv_column('R GOSH VASOPRESSIN HOURLY VOLUME_mL', flowsheet, 'EquivAVP', corAVP)
+    
     sum_inout('EquivAVP', flowsheet, 'Inotropes')
 
     def corDopamine(input):
@@ -1751,8 +1760,9 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     sum_inout('EquivDopamine', flowsheet, 'Inotropes')
 
     #Can consider changing this to be /10 as that is what Michael has done
+    #Milrinone is 1mg/ml - (0.1%, 1:1000) - so this should be *10 not /10
     def corMilrinone(input):
-        return input/10
+        return input*10
     conv_column('R GOSH MILRINONE HOURLY VOLUME_mL', flowsheet, 'EquivMilrinone', corMilrinone)
     sum_inout('EquivMilrinone', flowsheet, 'Inotropes')
 
@@ -1761,7 +1771,17 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     def aoverb(a, b):
         return a/b
     conv_2cols('Inotropes', 'interpolated_wt_kg', flowsheet, 'Inotropes_kg', aoverb)
-
+    conv_2cols('EquivAVP', 'interpolated_wt_kg', flowsheet, 'AVP_kg', aoverb)
+    conv_2cols('EquivDopamine', 'interpolated_wt_kg', flowsheet, 'Dopamine_kg', aoverb)
+    conv_2cols('Norad_adrenaline', 'interpolated_wt_kg', flowsheet, 'Norad_adrenaline_kg', aoverb)
+    conv_2cols('EquivMilrinone', 'interpolated_wt_kg', flowsheet, 'Milrinone_kg', aoverb)
+    
+    #Now in mcg/kg/min
+    flowsheet['Inotropes_mcg_kg_min'] = flowsheet.Inotropes_kg/60
+    flowsheet['EquivAVP_mcg_kg_min'] = flowsheet.AVP_kg/60
+    flowsheet['EquivDopamine_mcg_kg_min'] = flowsheet.Dopamine_kg/60
+    flowsheet['Norad_adrenaline_mcg_kg_min'] = flowsheet.Norad_adrenaline_kg/60
+    flowsheet['EquivMilrinone_mcg_kg_min'] = flowsheet.Milrinone_kg/60
 
     #Take maximum corrected intrope to be when patients are on ECMO
     maximum_inotropy = np.max(flowsheet['Inotropes_kg'])
@@ -1769,15 +1789,188 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     flowsheet.loc[on_ECMO, 'Inotropes_kg'] = maximum_inotropy
 
     #Only filling and interpolating Inotropy, interoplating ECMO here as don't want this to affect intropy/ viceversa
-    fill_missing('Inotropes', flowsheet, 'Inotropes_missing')
-    interpolate_cols('ECMO', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
-    interpolate_cols('Inotropes_kg', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+    fill_missing('Inotropes_mcg_kg_min', flowsheet, 'Inotropes_missing')
+    fill_missing('EquivAVP_mcg_kg_min', flowsheet, 'AVP_missing')
+    fill_missing('EquivDopamine_mcg_kg_min', flowsheet, 'Dopamine_missing')
+    fill_missing('Norad_adrenaline_mcg_kg_min', flowsheet, 'Norad_adrenaline_missing')
+    fill_missing('EquivMilrinone_mcg_kg_min', flowsheet, 'Milrinone_missing')
+    
+    interpolate_cols('ECMO', flowsheet, 'pad', how_far = 90, limit_direction = 'forward', fill = 0)
+    interpolate_cols('Inotropes_mcg_kg_min', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
+    interpolate_cols('EquivAVP_mcg_kg_min', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
+    interpolate_cols('EquivDopamine_mcg_kg_min', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
+    interpolate_cols('Norad_adrenaline_mcg_kg_min', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
+    interpolate_cols('EquivMilrinone_mcg_kg_min', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
 
+    #Presumably ECMO is also maximum ventilation so:
+    flowsheet.loc[flowsheet['ECMO'] == 1, 'Ventilation'] = 3
 
+    #Print where we've got to
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
     print("Inotropes done:", current_time)
+    
+    ##Now we can calculate pSOFA
+    #First spo2:fiO2 ratio
+    #Start by making new (non-interpolated column)
+    flowsheet['S_ratio'] = np.NaN
+    flowsheet.loc[flowsheet.SpO2_missing == 0, 'S_ratio'] = flowsheet.loc[flowsheet.SpO2_missing == 0, 'SpO2']
+    
+    #Now interpolate (5 minutes) in each direction so that we have comparable S and F to compare
+    interpolate_cols('S_ratio', flowsheet, 'pad', how_far = 90, limit_direction = 'forward')
+    
+    #Repeat for FiO2
+    flowsheet['F_ratio'] = np.NaN
+    flowsheet.loc[flowsheet.FiO2_missing == 0, 'F_ratio'] = flowsheet.loc[flowsheet.FiO2_missing == 0, 'FiO2']
+    interpolate_cols('F_ratio', flowsheet, 'pad', how_far = 90, limit_direction = 'forward')
+    
+    #Now make the ratio
+    flowsheet['SF_ratio'] = np.NaN
+    flowsheet.SF_ratio = flowsheet.S_ratio/flowsheet.F_ratio
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_pSOFA_interpolated.csv.gz')
 
+if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv.gz') == False):
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_pSOFA_interpolated.csv.gz', parse_dates = ['taken_datetime'])
+
+    
+    #Now make the pSOFA resp criteria
+    #First small function to determine how high the score should be
+    def pResp(ratio, Vent):
+        if Vent <= 1:
+            if ratio < 264:
+                return 2
+            elif ratio < 292:
+                return 1
+            elif ratio >=292:
+                return 0
+            else:
+                return np.NaN
+        else:
+            if ratio <148:
+                return 4
+            elif ratio >=148:
+                return 3
+            else:
+                return np.NaN
+            
+        
+    #Now make the pSOFA score for resp
+    flowsheet['pSOFA_resp'] = np.NaN
+    
+    #It seems to use too much memory to do this all at once so:
+    unique_id = flowsheet.project_id.unique()
+    bar = Bar('Processing pSOFA_resp', max=len(unique_id))
+    for i in unique_id:
+        project_locs = np.where(flowsheet.project_id == i)
+        pSOFA_per_patient = flowsheet.loc[project_locs[0], :].apply(lambda x: pResp(x.SF_ratio, x.Ventilation), 1)
+        flowsheet.loc[project_locs[0], 'pSOFA_resp'] = pSOFA_per_patient
+        bar.next()
+    bar.finish()
+        
+    
+    
+
+    ## Now pSOFA for inotropes
+    def pInotrope(MAP, dopamine, nor_adrenaline, milrinone, age):
+        #First if they are on inotropes/ vasopressors
+        if nor_adrenaline > 0.1:
+            return 4
+        elif dopamine > 0.15: #Using the corrected values
+            return 4
+        elif dopamine > 0.05: #Using the corrected values
+            return 3
+        elif nor_adrenaline > 0:
+            return 3
+        elif dopamine > 0:
+            return 2
+        elif milrinone > 0:
+            return 2 #Need to double check this with Sam
+        else:
+            #Get the normal value
+            map_ages = np.array([-1, 1/12, 1, 2, 5, 12, 18, 25]) #Using -1 because there is a child with age 0 apparently
+            map_normals = np.array([46, 55, 60, 62, 65, 67, 70, 70])
+            normal_map = map_normals[map_ages < age][-1]
+            
+            #Now score
+            if MAP < normal_map:
+                return 1
+            elif MAP >= normal_map:
+                return 0
+            else:
+                return np.NaN 
+            
+    flowsheet['pSOFA_cardio'] = np.NaN
+    
+    #It seems to use too much memory to do this all at once so:
+    bar = Bar('Processing pSOFA_cardio', max=len(unique_id))
+    for i in unique_id:
+        project_locs = np.where(flowsheet.project_id == i)
+        pCardio_per_patient = flowsheet.loc[project_locs[0], :].apply(lambda x: pInotrope(x.MAP,
+                                                                                          x.EquivDopamine_mcg_kg_min*100,
+                                                                                          x.Norad_adrenaline_mcg_kg_min, 
+                                                                                          x.EquivMilrinone_mcg_kg_min,
+                                                                                          x.Age_yrs), 1)
+        flowsheet.loc[project_locs[0], 'pSOFA_cardio'] = pCardio_per_patient
+        bar.next()
+    bar.finish()
+        
+    #pSOFA for Platelet count
+    plt_normals = np.array([150, 100,  50,  20,   0])
+    pSOFA_plt = np.nan
+    
+    #For Bilirubin
+    normal_bili = np.array([0, 1.2, 2, 6, 12]) * 17.104
+    pSOFA_bili = np.nan
+    
+    #For GCS
+    normal_gcs = np.array([15, 13, 10, 6, 0])
+    pSOFA_GCS = np.nan
+    
+    #For creatinine
+    normal_creatinine = pd.DataFrame(np.array(([0, 0.8, 1.0, 1.2, 1.6], 
+                                                [0, 0.3, 0.5, 0.8, 1.2], 
+                                                [0, 0.4, 0.6, 1.1, 1.5], 
+                                                [0, 0.6, 0.9, 1.6, 2.3], 
+                                                [0, 0.7, 1.1, 1.8, 2.6], 
+                                                [0, 1.0, 1.7, 2.9, 4.2], 
+                                                [0, 1.2, 2.0, 3.5, 5]))*88.4, 
+                                     index = [1/12, 1, 2, 5, 12, 18, 25])
+    
+    def pCreatinine(creatinine: float, age: float) -> int:
+        #Find the relevant row of the index
+        index_position = np.where(age < normal_creatinine.index)[0][0]
+        correct_row = normal_creatinine.index[index_position]
+        
+        #Now return the pSOFA score relevant to that (just the correct column)
+        return np.where(normal_creatinine.loc[correct_row, :] < creatinine)[0][-1]
+    pSOFA_cr = np.nan
+    
+    bar = Bar('Processing rest of pSOFA', max=len(unique_id))                                  
+    for i in unique_id:
+        project_locs = np.where(flowsheet.project_id == i)
+        
+        #Platelets
+        pPlt_per_patient = flowsheet.loc[project_locs[0], 'Plts'].map(lambda x: np.where(x >= plt_normals)[0][0])
+        flowsheet.loc[project_locs[0], 'pSOFA_plt'] = pPlt_per_patient
+        
+        #Bili
+        pBili_per_patient = flowsheet.loc[project_locs[0], 'Bili'].map(lambda x: np.where(x >= normal_bili)[0][0])
+        flowsheet.loc[project_locs[0], 'pSOFA_bili'] = pBili_per_patient
+        
+        #GCS
+        pGCS_per_patient = flowsheet.loc[project_locs[0], 'GCS'].map(lambda x: np.where(x >= normal_gcs)[0][0])
+        flowsheet.loc[project_locs[0], 'pSOFA_GCS'] = pGCS_per_patient
+        
+        #Creatinine
+        pCr_per_patient = flowsheet.loc[project_locs[0][1], :].apply(lambda x: pCreatinine(x.Cr,
+                                                                                          x.Age_yrs), 1)
+        flowsheet.loc[project_locs, 'pSOFA_Cr'] = pCr_per_patient
+        bar.next()
+    bar.finish()
+
+    #Now add up pSofa scores
+    flowsheet['pSOFA'] = flowsheet.pSOFA_resp + flowsheet.pSOFA_cardio + flowsheet.pSOFA_bili + flowsheet.pSOFA_plt + flowsheet.pSOFA_GCS + flowsheet.pSOFA_Cr
+    
     ### Resp rate
     #get_relevant_cols(flowsheet, 'rate|RR|resp')
 
@@ -1797,9 +1990,9 @@ if (os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.c
     fill_missing('RR', flowsheet, 'RR_missing')
 
     #Need to do something about normals here too
-    interpolate_cols('RR', flowsheet, 'linear', 'RR', how_far = 60, limit_direction = 'both', fill = fill_median_HRBP)
+    interpolate_cols('RR', flowsheet, 'linear', 'RR', how_far = 90, limit_direction = 'both', fill = fill_median_HRBP)
     print('Saving interpolated columns')
-    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv.gz')
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -1812,8 +2005,8 @@ else:
 
 ### Ecmo and dialysis
 
-if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv') == False:
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv', parse_dates = ['taken_datetime'])
+if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv.gz') == False:
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_nearly_interpolated.csv.gz', parse_dates = ['taken_datetime'])
 
     #Dialysis
     get_relevant_cols(flowsheet, 'CRRT|dialysis|PD|HDF')
@@ -1842,7 +2035,7 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv') == Fal
     #769 R GOSH CRRT UF
     make_new_columns('R GOSH CRRT UF', flowsheet, ['dialysis'], new_cols1 = make_allnonNa(flowsheet, 'R GOSH CRRT UF', 2, 2))
     fill_missing('dialysis', flowsheet, 'dialysis_missing')
-    interpolate_cols('dialysis', flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
+    interpolate_cols('dialysis', flowsheet, 'pad', how_far = 90, limit_direction = 'forward', fill = 0)
 
     ### Don't forget temperature
     get_relevant_cols(flowsheet, 'temp|deg')
@@ -1857,14 +2050,14 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv') == Fal
     make_new_columns('TEMPERATURE', flowsheet, ['Temp'], True)
     make_new_columns('R AN TEMPERATURE (NON-SPECIFIC)', flowsheet, ['Temp'], True)
     fill_missing('Temp', flowsheet, 'Temp_missing')
-    interpolate_cols('Temp', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = fill_median)
+    interpolate_cols('Temp', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = fill_median)
 
     ### Urine output
     make_new_columns('R URINE OUTPUT_mL', flowsheet, ['Urine_output'], True)
     make_new_columns('URINE OUTPUT_mL', flowsheet, ['Urine_output'], True)
     flowsheet['Urine_output_kg'] =  flowsheet['Urine_output']/flowsheet['interpolated_wt_kg'] 
     fill_missing('Urine_output_kg', flowsheet, 'Urine_output_missing_kg')
-    interpolate_cols('Urine_output_kg', flowsheet, 'linear', how_far = 60, limit_direction = 'both', fill = 0)
+    interpolate_cols('Urine_output_kg', flowsheet, 'linear', how_far = 90, limit_direction = 'both', fill = 0)
 
     ## Do something with PEWS and PIM score
     get_relevant_cols(flowsheet, 'PEWS')
@@ -1874,7 +2067,7 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv') == Fal
     
     #I think that most PEWS charts make you put zero if not available anyway - assume GCS basically not there because mostly NA
     for i in pews:
-        interpolate_cols(i, flowsheet, 'pad', how_far = 60, limit_direction = 'forward', fill = 0)
+        interpolate_cols(i, flowsheet, 'pad', how_far = 90, limit_direction = 'forward', fill = 0)
     flowsheet['PEWS'] = flowsheet['R GOSH PEWS BP SCORE'] + flowsheet['R GOSH PEWS WOB SCORE'] + flowsheet['R GOSH PEWS SPO2 SCORE'] + flowsheet['R GOSH PEWS RESP SCORE'] + flowsheet['R GOSH PEWS OX SCORE'] + flowsheet['R GOSH PEWS CRT SCORE'] + flowsheet['R GOSH PEWS HR SCORE']
 
 
@@ -1883,7 +2076,7 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv') == Fal
     print("Temp and PEWS done:", current_time)
 
     #Saving PEWS
-    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv.gz')
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -1899,8 +2092,8 @@ Ref is downloaded Egyptian paper
 The PIM2 risk of death = exp PIM2 val/(1 + expPIM2 val)
 """
 
-if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_final_output.csv') == False:
-    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv', parse_dates = ['taken_datetime'])
+if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_final_output.csv.gz') == False:
+    flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_with_PEWS.csv.gz', parse_dates = ['taken_datetime'])
 
     #Now bin all bits that are not in the PICU admission - should preserve pre-existing bloods etc
     #Frames for start and end dates
@@ -1979,7 +2172,7 @@ if os.path.exists('/store/DAMTP/dfs28/PICU_data/flowsheet_final_output.csv') == 
     flowsheet = all_times.merge(flowsheet, how = 'inner', on = ['taken_datetime', 'project_id'])
 
     ### Save the data so that can run childsds in R
-    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_final_output.csv')
+    flowsheet.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_final_output_pSOFA.csv.gz')
 
 ### Now bin all data that isn't within the PICU admission time periods
 
@@ -2021,6 +2214,6 @@ flowsheet_output = pd.concat([flowsheet_keep, flowsheet_new], axis = 1)
 flowsheet_sample = flowsheet_output.loc[1:500000, :]
 
 print('Saving output')
-flowsheet_sample.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_sample_final.csv')
-flowsheet_output.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_output_touse.csv')
+flowsheet_sample.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_sample_final_pSOFA.csv.gz')
+flowsheet_output.to_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_output_touse_pSOFA.csv.gz')
 print('Done!')

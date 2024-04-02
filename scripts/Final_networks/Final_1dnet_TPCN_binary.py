@@ -8,9 +8,10 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, auc, confusion_matrix, roc_curve, precision_score, recall_score, f1_score
 import json
 import matplotlib.pyplot as plt
+import pandas as pd
 
 #Read in the data
-data = np.load('/store/DAMTP/dfs28/PICU_data/np_arrays.npz')
+data = np.load('/store/DAMTP/dfs28/PICU_data/np_arrays_pSOFA.npz')
 array3d = data['d3']
 array2d = data['d2']
 outcomes = data['outcomes']
@@ -216,15 +217,25 @@ precision_PEWS_full = list()
 F1_death_full = list()
 F1_LOS_full = list()
 F1_PEWS_full = list()
+AUPRC_death_full = list()
+AUPRC_LOS_full = list()
+AUPRC_PEWS_full = list()
+prec_at_recall_death_full = list()
+prec_at_recall_LOS_full = list()
+prec_at_recall_PEWS_full = list()
 
 
 #Run this 10 times
-for i in range(10):
+for i in range(1):
     full_model = make_1DNET('full')
 
     full_model.compile(optimizer = 'adam', loss='binary_crossentropy',  metrics=['accuracy', 
                             'mse', tf.keras.metrics.MeanAbsoluteError(), 
-                            tf.keras.metrics.AUC()])               
+                            tf.keras.metrics.AUC(), tf.keras.metrics.AUC(curve='PR'), 
+                            #tf.keras.metrics.F1(), 
+                            tf.keras.metrics.Precision(),
+                            tf.keras.metrics.Recall(),
+                            tf.keras.metrics.PrecisionAtRecall(0.9)])               
 
     #Dont forget to add batch size back in 160
     #Now fit the model
@@ -244,7 +255,11 @@ for i in range(10):
     F1_death_full.append(f1_score(np.argmax(binary_death_test_outcomes, axis = 1), np.argmax(y_pred1, axis = 1), average = 'macro'))
     F1_LOS_full.append(f1_score(np.argmax(binary_LOS_test_outcomes, axis = 1), np.argmax(y_pred2, axis = 1), average = 'macro'))
     F1_PEWS_full.append(f1_score(np.argmax(binary_deterioration_test_outcomes, axis = 1), np.argmax(y_pred3, axis = 1), average = 'macro'))
-
+    #Recall.append(recall_score(onehot_encoded_test, onehot_encoded_pred, average = 'macro'))
+    #Precision.append(precision_score(onehot_encoded_test, onehot_encoded_pred, average = 'macro', zero_division = 0))
+    #F1.append(f1_score(onehot_encoded_test, onehot_encoded_pred, average = 'macro'))
+    #AUPRC.append(average_precision_score(onehot_encoded_test, y_pred_proba,  average = 'macro'))
+    
     keys = [i for i in full_model_history.history.keys()]
     AUC_death_full.append(full_model_history.history[keys[23]][-1])
     AUC_LOS_full.append(full_model_history.history[keys[27]][-1])
@@ -465,6 +480,10 @@ print(conf_mat1)
 print(conf_mat2)
 print(conf_mat3)
 print(conf_mat3_2)
+
+#####
+#Some plotting
+pd.DataFrame(all_test_outcomes[:, 12]).plot(kind = 'hist')
 
 """
 #### Now ablate bits

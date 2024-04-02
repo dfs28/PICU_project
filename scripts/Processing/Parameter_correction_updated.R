@@ -9,13 +9,13 @@ print_now <- function(statement){
   print(paste(statement, Sys.time(), sep = ': '))
 }
 
-
 #Read in the sheet
 print_now('Reading in flowsheet')
-flowsheet = read.csv('/store/DAMTP/dfs28/PICU_data/flowsheet_sample_final.csv.gz', header = TRUE, sep = ',')
+flowsheet = read.csv('/store/DAMTP/dfs28/PICU_data/flowsheet_final_output_pSOFA.csv.gz', header = TRUE, sep = ',')
 print_now('Flowsheet read')
 
 #Will need to go through and only do corrections for that age range, then do the corretions for younger children
+
 
 #Make corrections for weight
 interpolated_weights = as.vector(flowsheet$interpolated_wt_kg)
@@ -26,13 +26,33 @@ flowsheet$Weight_z_scores =  sds(interpolated_weights ,
             sex = Sexes,
             male = 'M', 
             female = 'F', 
-            ref = who.ref, 
+            ref = kro.ref, 
             item = 'weight', 
             type = 'SDS')
 print(length(interpolated_weights))
 print(length(Ages_yrs))
 print(length(Sexes))
-#[1] "value, age, and sex must be of the same length" - not sure where this is coming from - do we need to do height too?
+
+#Do those which are intersex as average of male and female
+intersexes <- which(!Sexes %in% c('M', 'F'))
+flowsheet$Weight_z_scores[intersexes] =  (sds(interpolated_weights[intersexes], 
+            age = Ages_yrs[intersexes], 
+            sex = rep('M', times = length(intersexes)),
+            male = 'M', 
+            female = 'F', 
+            ref = kro.ref, 
+            item = 'weight', 
+            type = 'SDS') +
+            sds(interpolated_weights[intersexes], 
+            age = Ages_yrs[intersexes], 
+            sex = rep('F', times = length(intersexes)),
+            male = 'M', 
+            female = 'F', 
+            ref = kro.ref, 
+            item = 'weight', 
+            type = 'SDS'))/2
+
+
 print_now('Weight corrected')
 
 interpolated_heights = as.vector(flowsheet$interpolated_ht_m)
@@ -41,48 +61,66 @@ flowsheet$Height_z_scores =  sds(interpolated_heights,
             sex = Sexes,
             male = 'M', 
             female = 'F', 
-            ref = who.ref, 
+            ref = kro.ref, 
             item = 'height', 
             type = 'SDS')
 
+#Again average as above for sex = I
+flowsheet$Height_z_scores[intersexes] =  (sds(interpolated_heights[intersexes], 
+            age = Ages_yrs[intersexes], 
+            sex = rep('M', times = length(intersexes)),
+            male = 'M', 
+            female = 'F', 
+            ref = kro.ref, 
+            item = 'height', 
+            type = 'SDS') +
+            sds(interpolated_heights[intersexes], 
+            age = Ages_yrs[intersexes], 
+            sex = rep('F', times = length(intersexes)),
+            male = 'M', 
+            female = 'F', 
+            ref = kro.ref, 
+            item = 'height', 
+            type = 'SDS'))/2
 
-#### Build corrections using tables - do I need an over 15 case?
-BP_df = data.frame(age = c(0.008, 1, 2, 5, 8, 12, 15), 
-                   SBP_lower = c(67, 72, 86, 89, 97, 102, 110), 
-                   SBP_higher = c(84, 104, 106, 112, 115, 120, 131), 
-                   DBP_lower = c(35, 37, 42, 46, 57, 61, 64), 
-                   DBP_higher = c(53, 56, 63, 72, 76, 80, 83), 
-                   MAP_lower = c(45, 50, 50, 58, 66, 71, 73), 
-                   MAP_higher = c(60, 62, 62, 69, 72, 79, 84))
+#Where height not available use the weight z-scores for height
+no_height <- which(is.na(flowsheet$Height_z_scores))
+flowsheet$Height_z_scores[no_height] <- flowsheet$Weight_z_scores[no_height]
 
-normalise <- function(location, input, age, type, BP_df){
-                #Function which finds normalised distance from median
+#For these patients need to return an imputed height where missing:
+#Make table of percentages
+perc_tab <- childsds::make_percentile_tab(
+  ref = kro.ref, item = "height", age=0:25,
+  perc=c(5,50,95), include.pars= FALSE)
 
-                switch(type, 
-                        'SBP' = {BP_df <- BP_df[, c('age', 'SBP_lower', 'SBP_higher')]}, 
-                        'DBP' = {BP_df <- BP_df[, c('age', 'DBP_lower', 'DBP_higher')]}, 
-                        'MAP' = {BP_df <- BP_df[, c('age', 'MAP_lower', 'MAP_higher')]})
+#Function to convert z-score back to height
+get_height <- function(z_score, age, sex, lookup_table){
+  
+  #Filter lookup table by sex
+  if (sex == 'F') {
+    lookup_table <- lookup_table[lookup_table$sex == 'female', ]
+  } else if (sex == 'M') {
+    lookup_table <- lookup_table[lookup_table$sex == 'male', ]
+  } else {
+    lookup_table <- (lookup_table[lookup_table$sex == 'female', 2:5] + lookup_table[lookup_table$sex == 'male', 2:5])/2
+  }
 
-                #Get age range
-                age_range = which(BP_df$age > age[location])[1]
-                if (is.na(age_range)) {age_range = dim(BP_df)[1]}
+  #Get age row
+  age_row = sort(which(lookup_table$age < age), decr = T)[1]
 
-                #Get median and approx variance
-                med = (BP_df[age_range, 2] + BP_df[age_range, 3])/2
-                dev = med - BP_df[age_range, 2]
-
-                #Get distance from med
-                distance = input[location] - med
-                return(distance/dev)
-
+  #Now use qnorm and pnorm to return the height based on that z-score
+  qnorm(pnorm(z_score), lookup_table$perc_50_0[age_row], 
+    (lookup_table$perc_50_0[age_row] - lookup_table$perc_05_0[age_row])/1.65)
 }
 
-flowsheet$SBP_zscore = unlist(sapply(1:dim(flowsheet)[1], normalise, input = flowsheet$SysBP, age = flowsheet$'Age.yrs.', type = 'SBP', BP_df = BP_df))
-print_now('SBP corrected')
-flowsheet$DBP_zscore = unlist(sapply(1:dim(flowsheet)[1], normalise, input = flowsheet$DiaBP, age = flowsheet$'Age.yrs.', type = 'DBP', BP_df = BP_df))
-print_now('DBP corrected')
-flowsheet$MAP_zscore = unlist(sapply(1:dim(flowsheet)[1], normalise, input = as.numeric(flowsheet$MAP), age = flowsheet$'Age.yrs.', type = 'MAP', BP_df = BP_df))
-print_now('MAP corrected')
+#No run on patients where there was originally no height (have to use a wrapper to make this work)
+flowsheet$interpolated_ht_m[no_height] <- sapply(no_height, 
+                                                g <- function(x) 
+                                                  {get_height(flowsheet$Height_z_scores[x], 
+                                                    Ages_yrs[x], 
+                                                    Sexes[x], 
+                                                    perc_tab)/100}) #divide by 100 to get height in m
+
 
 #Need to read in the other things
 HR_meansd = read.csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/HR_meansd.csv', sep = ',', header = TRUE)
@@ -119,9 +157,17 @@ calc_zscore <- function(row, sheet, input_col, age_col, scortab, sex = NA, scort
   
       #Get distance from med
       return(dev/scortab$sd[age_range])
-      } else { 
+    } else if (sheet[row, sex] == 'M') { 
       #Do girls  
       #Get absolute distance from mean
+      dev = sheet[row, input_col] - scortab_f$mean[age_range]
+  
+      #Get distance from med
+      return(dev/scortab_f$sd[age_range])
+    } else {
+      #Do I
+      #Get absolute distance from mean
+      scortab_f = (scortab_f + scortab)/2
       dev = sheet[row, input_col] - scortab_f$mean[age_range]
   
       #Get distance from med

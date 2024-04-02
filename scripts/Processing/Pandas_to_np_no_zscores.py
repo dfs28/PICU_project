@@ -14,6 +14,8 @@ import sys
 from functools import reduce
 
 #In reality import the big flowsheet to use thing
+
+#In reality import the big flowsheet to use thing
 print('Starting run: ', datetime.now().strftime("%H:%M:%S"))
 flowsheet = pd.read_csv('/store/DAMTP/dfs28/PICU_data/flowsheet_zscores.csv', parse_dates = ['taken_datetime'])
 print('Flowsheet loaded: ', datetime.now().strftime("%H:%M:%S"))
@@ -249,22 +251,22 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
 
 #Note that HCT. is HCT#
 point_cols = ['ALT', 'Albumin', 'AlkPhos','AST', 'Aspartate', 'Amylase', 'APTT', 'Anion_gap', 'Base_excess', 'Basophils', 'Bicarb',
-            'pH', 'Blood_culture',  'Cr', 'CRP', 'Ca2.', 'Cl', 'Eosinophils', 'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT.', 'HCT', 'INR',
+            'pH', 'Blood_culture', 'Cr', 'CRP', 'Ca2.', 'Cl', 'Eosinophils', 'FHHb', 'FMetHb', 'FO2Hb', 'Glucose', 'HCT.', 'HCT', 'INR',
             'Lactate', 'Lymphs', 'Mg', 'Monocytes', 'Neuts', 'P50', 'PaCO2', 'PcCO2', 'PmCO2', 'PaO2', 'PcO2', 'PmO2', 'PO2', 
             'PvCO2', 'PcO2.1', 'ScvO2', 'Phos', 'Plts', 'K.', 'PT', 'Retics', 'Na.', 'TT', 'Bili', 'WCC', 'Strong_ion_gap', 'Age_yrs', 'sex', 
-            'ethnicity', 'Weight_z_scores', 'Height_z_scores']
- 
+            'ethnicity', 'interpolated_wt_kg', 'interpolated_ht_m']
 
-series_cols =  ['Ventilation', 'HFO', 'IPAP', 'EPAP', 'Tracheostomy', 'ETCO2', 'FiO2', 'O2Flow', 'O2Flow.kg', 'Ventilation_L_min', 'Ventilation.ml.',
+
+series_cols =  ['Ventilation', 'HFO', 'IPAP', 'EPAP', 'Tracheostomy', 'ETCO2', 'FiO2', 'O2Flow', 'Ventilation_L_min', 'Ventilation.ml.',
                 'MeanAirwayPressure', 'Ventilation_missing', 'O2Flow.kg_missing', 'IPAP_missing', 'EPAP_missing', 'FiO2_missing', 'HFO_missing',
-                'Tracheostomy_missing', 'Ventilation.ml._missing', 'MeanAirwayPressure_missing', 'ETCO2_missing', 'SBP_zscore', 'DBP_zscore', 
-                'MAP_zscore', 'SysBP_missing', 'DiaBP_missing', 'MAP_missing', 'HR_zscore', 'HR_missing', 'Comfort.Alertness', 'Comfort.BP', 'Comfort.Calmness',
+                'Tracheostomy_missing', 'Ventilation.ml._missing', 'MeanAirwayPressure_missing', 'ETCO2_missing', 'SysBP', 'DiaBP', 
+                'MAP', 'SysBP_missing', 'DiaBP_missing', 'MAP_missing', 'HR', 'HR_missing', 'Comfort.Alertness', 'Comfort.BP', 'Comfort.Calmness',
                 'Comfort', 'Comfort.HR', 'Comfort.Resp', 'AVPU', 'GCS_V', 'GCS_E', 'GCS_M', 'GCS', 'GCS_missing', 'AVPU_missing', 'CRT', 'CRT_missing',
-                'SpO2', 'SpO2_missing', 'interpolated_ht_m', 'ECMO', 'ECMO_missing', 'Inotropes_mcg_kg_min', 'EquivAVP_mcg_kg_min', 'EquivDopamine_mcg_kg_min',
-                'Norad_adrenaline_mcg_kg_min', 'EquivMilrinone_mcg_kg_min', 'Inotropes_missing', 'RR_zscore', 'RR_missing',  'AVP_missing', 'Dopamine_missing',
+                'SpO2', 'SpO2_missing', 'ECMO', 'ECMO_missing', 'Inotropes_mcg_kg_min', 'EquivAVP_mcg_kg_min', 'EquivDopamine_mcg_kg_min',
+                'Norad_adrenaline_mcg_kg_min', 'EquivMilrinone_mcg_kg_min', 'Inotropes_missing', 'RR', 'RR_missing', 'AVP_missing', 'Dopamine_missing',
                 'Norad_adrenaline_missing', 'Milrinone_missing',
                 'SF_ratio', 'pSOFA_resp', 'pSOFA_cardio', 'pSOFA_plt', 'pSOFA_bili', 'pSOFA_GCS', 'pSOFA_Cr', 'pSOFA',
-                'dialysis', 'dialysis_missing', 'Temp', 'Temp_missing', 'Urine_output', 'Urine_output_kg', 'Urine_output_missing_kg', 'PEWS']
+                'dialysis', 'dialysis_missing', 'Temp', 'Temp_missing', 'Urine_output', 'Urine_output_missing_kg', 'PEWS']
 
 other_cols = ['time_to_death', 'died']
 
@@ -273,7 +275,7 @@ all_cols = point_cols + series_cols + other_cols
 #Now run it
 array3d, array2d, array_characteristics, splines, outcomes, slopes, intercepts, r_values, p_values, std_errs, slicesPerPatient, all_used_cols, j_point_cols, j_series_cols = make_3d_array(flowsheet, 180, all_cols, point_cols, series_cols)
 print('Slicing done: ', datetime.now().strftime("%H:%M:%S"))
-np.savez('/store/DAMTP/dfs28/PICU_data/np_arrays_pSOFA.npz', d3 = array3d, d2 = array2d, chars = array_characteristics, splines = splines, slopes = slopes, intercepts =  intercepts, r_values = r_values, p_values = p_values, std_errs = std_errs,
+np.savez('/store/DAMTP/dfs28/PICU_data/np_arrays_no_zscore_pSOFA.npz', d3 = array3d, d2 = array2d, chars = array_characteristics, splines = splines, slopes = slopes, intercepts =  intercepts, r_values = r_values, p_values = p_values, std_errs = std_errs,
          outcomes = outcomes, per_pt = slicesPerPatient, all_used = np.array(all_used_cols), point_cols = np.array(j_point_cols), series_cols = np.array(j_series_cols))
 print('Saved: ', datetime.now().strftime("%H:%M:%S"))
 

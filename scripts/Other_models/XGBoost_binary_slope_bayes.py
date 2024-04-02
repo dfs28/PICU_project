@@ -15,7 +15,9 @@ import json
 from sklearn.metrics import accuracy_score, average_precision_score, roc_auc_score, mean_squared_error, mean_absolute_error, auc, confusion_matrix, roc_curve, precision_score, recall_score, f1_score
 import matplotlib.pyplot as plt
 from skopt import BayesSearchCV
-from skopt.space import Real, Categorical, Integer
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import KFold, cross_validate, cross_val_predict
 
 #Read in the data
 #Consider binning unnecessary vars (r, std or just slopes in general)
@@ -81,11 +83,12 @@ test_outcomes = split_outcomes[1]
 
 #Make binary outcomes
 #Make the binary values
-binary_deterioration_train_12h = np.array(train_outcomes[:, 12] < 12, dtype = int)
-binary_deterioration_train_outcomes = np.transpose(np.array([1- binary_deterioration_train_12h, binary_deterioration_train_12h]))
+binary_deterioration_train_outcomes = np.transpose(np.array([np.sum(train_outcomes[:, 8:9], axis = 1), np.sum(train_outcomes[:,9:11], axis = 1)]))
+binary_deterioration_test_outcomes = np.transpose(np.array([np.sum(test_outcomes[:, 8:9], axis = 1), np.sum(test_outcomes[:,9:11], axis = 1)]))
 
-binary_deterioration_test_12h = np.array(test_outcomes[:, 12] < 12, dtype = int)
-binary_deterioration_test_outcomes = np.transpose(np.array([1- binary_deterioration_test_12h, binary_deterioration_test_12h]))
+binary_deterioration_outcomes = np.transpose(np.array([np.sum(outcomes[:, 8:9], axis = 1), np.sum(outcomes[:,9:11], axis = 1)]))
+
+
 
 #Set x and y
 X = np.concatenate((train_array2d, train_characteristics, train_slopes, train_R), axis=1)
@@ -94,7 +97,7 @@ y = np.argmax(binary_deterioration_train_outcomes, axis = 1)
 # grid search
 model = XGBClassifier(objective='binary:logistic', eval_metric = 'aucpr', use_label_encoder=False, n_jobs = 32)
 
-if os.path.exists('/mhome/damtp/q/dfs28/Project/PICU_project/models/XGBoost_best_12h_slope.json') == False:                         
+if os.path.exists('/mhome/damtp/q/dfs28/Project/PICU_project/models/XGBoost_best_6h_slope_bayes.json') == False:                         
     bayes_cv_tuner = BayesSearchCV(
         estimator = XGBClassifier(
             n_jobs = 16,
@@ -146,19 +149,19 @@ if os.path.exists('/mhome/damtp/q/dfs28/Project/PICU_project/models/XGBoost_best
     
     # Save all model results
     clf_name = bayes_cv_tuner.estimator.__class__.__name__
-    all_models.to_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/xgb_opt' + clf_name +"_cv_results_12h.csv")
+    #all_models.to_csv('/mhome/damtp/q/dfs28/Project/PICU_project/files/xgb_opt' + clf_name +"_cv_results_3h.csv")
 
     result = bayes_cv_tuner.fit(X, y, callback=status_print)
 
     #Save the best hyperparameters
     best_hyperparameters = result.best_params_
 
-    a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/models/XGBoost_best_12h_slope.json", "w")
+    a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/models/XGBoost_best_6h_slope_bayes.json", "w")
     json.dump(best_hyperparameters, a_file)
     a_file.close()
 
 else:
-    f = open("/mhome/damtp/q/dfs28/Project/PICU_project/models/XGBoost_best_12h_slope.json", )
+    f = open("/mhome/damtp/q/dfs28/Project/PICU_project/models/XGBoost_best_6h_slope_bayes.json", )
     param_grid = json.load(f)
 
 #get colnames
@@ -177,7 +180,7 @@ all_cols.extend(series_cols_slopes)
 all_cols.extend(series_cols_R)
 
 #Now run and get parameters
-model1 = XGBClassifier(objective='binary:logistic', eval_metric = 'logloss', use_label_encoder=False, n_jobs = 32, **param_grid)
+model1 = XGBClassifier(objective='binary:logistic', eval_metric = 'aucpr', use_label_encoder=False, n_jobs = 32, **param_grid)
 X_test = np.concatenate((test_array2d, test_characteristics, test_slopes, test_R), axis=1)
 y_test = np.argmax(binary_deterioration_test_outcomes, axis = 1)
 
@@ -208,9 +211,9 @@ accuracy.append(accuracy_score(y_test, y_pred))
 MSE.append(mean_squared_error(y_test, y_pred))
 MAE.append(mean_absolute_error(y_test, y_pred))
 AUROC.append(roc_auc_score(onehot_encoded_test, y_pred_proba,  average = 'macro'))
-Recall.append(recall_score(y_test, y_pred, average = 'macro'))
-Precision.append(precision_score(y_test, y_pred, average = 'macro', zero_division = 0))
-F1.append(f1_score(y_test, y_pred, average = 'macro'))
+Recall.append(recall_score(onehot_encoded_test, onehot_encoded_pred, average = 'macro'))
+Precision.append(precision_score(onehot_encoded_test, onehot_encoded_pred, average = 'macro', zero_division = 0))
+F1.append(f1_score(onehot_encoded_test, onehot_encoded_pred, average = 'macro'))
 AUPRC.append(average_precision_score(onehot_encoded_test, y_pred_proba,  average = 'macro'))
 
 #Save to a json file
@@ -220,10 +223,10 @@ results = {'acc_PEWS' : np.mean(accuracy),
             'MAE_PEWS' : np.mean(MAE), 
             'precision_PEWS' : np.mean(Precision), 
             'recall_PEWS' : np.mean(Recall), 
-            'F1_PEWS' : np.mean(F1), 
+            'F1_PEWS' : np.mean(F1),
             'AUPRC_PEWS' : np.mean(AUPRC)}
 
-a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/XGBoost_results_slope_12h_binary", "w")
+a_file = open("/mhome/damtp/q/dfs28/Project/PICU_project/files/XGBoost_results_slope_binary", "w")
 json.dump(results, a_file)
 a_file.close()
 
@@ -237,14 +240,30 @@ y_pred_proba = clf1.predict_proba(X_test)
 y_pred_ratio = y_pred_proba[:, 0]/ y_pred_proba[:, 1]
 y_pred_ratio1 = y_pred_proba[:, 1]/ y_pred_proba[:, 0]
 
-precision_calc, recall_calc, thresholds_prc = precision_recall_curve(y_test, y_pred_proba[:,1], pos_label=clf1.classes_[1])
-precision_calc[recall_calc > 0.9][-1]
+#Work out best threshold
+fpr, tpr, thresholds = roc_curve(1- np.argmax(binary_deterioration_test_outcomes, axis = 1), y_pred_proba[:,1])
+gmeans = np.sqrt(tpr * (1-fpr))
+ix = np.argmax(gmeans)
+print('Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], gmeans[ix]))
 
-y_tuned_sensitivity = (y_pred_ratio > thresholds_prc[np.where(recall_calc > 0.9)[0][-1]]).astype(int)
-tuned_conf_mat = confusion_matrix((y_pred_proba[:,1] > thresholds_prc[np.where(recall_calc > 0.9)[0][-1]]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
+fpr1, tpr1, thresholds1 = roc_curve(1- np.argmax(binary_deterioration_test_outcomes, axis = 1), y_pred_proba[:,1])
 
-f1_score((y_pred_proba[:,1] > thresholds_prc[np.where(recall_calc > 0.9)[0][-1]]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
+#Get the tuned best
+y_tuned = (y_pred_proba[:,1] > thresholds[ix]).astype(int)
+confusion_matrix((y_pred_proba[:,1] > thresholds[ix]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
 
+#Now calculate precision given a 90% sensitivity
+precision = tpr/(fpr + tpr)
+precision[tpr > 0.9][0]
+
+y_tuned_sensitivity = (y_pred_ratio > thresholds[tpr > 0.9][0]).astype(int)
+confusion_matrix((y_pred_proba[:,1] > thresholds[tpr > 0.9][0]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
+
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import PrecisionRecallDisplay
+
+prec, recall, _ = precision_recall_curve(y_test, y_pred_proba[:,1], pos_label=clf1.classes_[1])
+pr_display = PrecisionRecallDisplay(precision=prec, recall=recall).plot()
 
 #Importance plot
 feature_importance1 = clf1.feature_importances_
@@ -287,20 +306,65 @@ shap_explainer.feature_names = feature_names1
 shap.plots.bar(shap_explainer, max_display=30)
 
 #Plot precision recall curve
-from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay
-precision, recall, thresholds = precision_recall_curve(binary_deterioration_test_outcomes[:,1], y_pred_proba[:, 1])
-
-pr_display1 = PrecisionRecallDisplay(precision, recall).plot()
-
-
-fig, (ax1) = plt.subplots(1, 1, figsize=(6, 6))
-ax1.set_ylim((0, 1))
-ax1.title.set_text('PRC for 12h Model Model')
-pr_display1.plot(ax=ax1)
-
-plt.show()
+from sklearn.metrics import precision_recall_curve
+precision, recall, thresholds = precision_recall_curve(y_test, y_pred_proba[:, 1])
 precision
 
 recall
 
 thresholds
+
+
+
+
+
+
+### Look at just using PEWS for the logistic regression
+## Input PEWS into logistic regression
+series_cols = data['series_cols']
+PEWS = array3d[:, series_cols == 'PEWS', :]
+PEWS = PEWS.reshape(PEWS.shape[0], PEWS.shape[2])
+last_PEWS = PEWS[:, -1:]
+clf_PEWS = LogisticRegression(random_state=0, max_iter= 100, multi_class='multinomial', solver='lbfgs', penalty = 'l2')
+scores1_last_PEWS_PEWS = cross_validate(clf_PEWS, last_PEWS, np.argmax(binary_deterioration_outcomes, axis = 1) , scoring = ['roc_auc_ovr', 'accuracy', 'precision', 'recall'], cv = 10)
+
+y_predict = cross_val_predict(clf_PEWS, last_PEWS, np.argmax(binary_deterioration_outcomes, axis = 1), cv=10, method = 'predict_proba')
+
+means3_last_PEWS_PEWS = [np.mean(scores1_last_PEWS_PEWS[i]) for i in scores1_last_PEWS_PEWS.keys()]
+stds3_last_PEWS_PEWS = [np.std(scores1_last_PEWS_PEWS[i]) for i in scores1_last_PEWS_PEWS.keys()]
+
+#Tune to sensitivity
+#Use ratio of outcome 3 to 1
+y_pred_ratio = y_predict[:, 0]/ y_predict[:, 1]
+y_pred_ratio1 = y_predict[:, 1]/ y_predict[:, 0]
+
+#Work out best threshold
+fpr, tpr, thresholds = roc_curve(1- np.argmax(binary_deterioration_outcomes, axis = 1), y_predict[:,1])
+gmeans = np.sqrt(tpr * (1-fpr))
+ix = np.argmax(gmeans)
+print('Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], gmeans[ix]))
+
+fpr1, tpr1, thresholds1 = roc_curve(1- np.argmax(binary_deterioration_outcomes, axis = 1), y_predict[:,1])
+
+#Get the tuned best
+y_tuned = (y_predict[:,1] > thresholds[ix]).astype(int)
+confusion_matrix((y_predict[:,1] > thresholds[ix]).astype(int), np.argmax(binary_deterioration_outcomes, axis = 1))
+
+#Now calculate precision given a 90% sensitivity
+precision = tpr/(fpr + tpr)
+precision[tpr > 0.9][0]
+
+y_tuned_sensitivity = (y_pred_ratio > thresholds[tpr > 0.9][0]).astype(int)
+confusion_matrix((y_pred_proba[:,1] > thresholds[tpr > 0.9][0]).astype(int), np.argmax(binary_deterioration_test_outcomes, axis = 1))
+
+average_precision_score(binary_deterioration_outcomes, y_predict)
+f1_score(np.round(1- np.argmax(binary_deterioration_outcomes, axis = 1)), np.round(y_predict[:,1]))
+
+prec, recall, _ = precision_recall_curve(binary_deterioration_outcomes[:,1], y_predict[:,1])
+pr_display1 = PrecisionRecallDisplay(precision=prec, recall=recall).plot()
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 8))
+
+pr_display.plot(ax=ax1)
+pr_display1.plot(ax=ax2)
+plt.show()
