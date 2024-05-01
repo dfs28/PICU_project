@@ -113,11 +113,21 @@ get_height <- function(z_score, age, sex, lookup_table){
     (lookup_table$perc_50_0[age_row] - lookup_table$perc_05_0[age_row])/1.65)
 }
 
-#No run on patients where there was originally no height (have to use a wrapper to make this work)
+#Now run on patients where there was originally no height (have to use a wrapper to make this work)
 flowsheet$interpolated_ht_m[no_height] <- sapply(no_height, 
                                                 g <- function(x) 
                                                   {get_height(flowsheet$Height_z_scores[x], 
                                                     Ages_yrs[x], 
+                                                    Sexes[x], 
+                                                    perc_tab)/100}) #divide by 100 to get height in m
+
+#For children of age 0 (where the above function is returning NA):
+#Now run on patients where there was originally no height (have to use a wrapper to make this work)
+no_height_interp <- which(is.na(flowsheet$interpolated_ht_m))
+flowsheet$interpolated_ht_m[no_height_interp] <- sapply(no_height_interp, 
+                                                g <- function(x) 
+                                                  {get_height(flowsheet$Height_z_scores[x], 
+                                                    Ages_yrs[x] + 0.0001, 
                                                     Sexes[x], 
                                                     perc_tab)/100}) #divide by 100 to get height in m
 
@@ -149,6 +159,11 @@ calc_zscore <- function(row, sheet, input_col, age_col, scortab, sex = NA, scort
   } else {
     #Need to invert the sort as its now older than not less than
     age_range = sort(which(scortab$age < sheet[row, age_col]), decreasing = T)[1]
+
+    #For children whose age is 0.0:
+    if (is.na(age_range)) {
+      age_range = 1
+    }
 
     #Do boys
     if (sheet[row, sex] == 'M') {
