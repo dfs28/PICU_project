@@ -62,11 +62,9 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
     print('Converted to np array: ', datetime.now().strftime("%H:%M:%S"))
 
     #Monitor progress
-    bar = Bar('Normalising data', max=array_use.shape[1])
-
     #Make this an np array with no nans
     if normalise:
-        for i in range(array_use.shape[1]):
+        for i in tqdm(range(array_use.shape[1]), desc = 'Normalising data', colour = 'green'):
             nas = np.isnan(array_use[:, i])
             if any(nas):
                 print(i)
@@ -84,9 +82,6 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
             array_use[:, i] -= min
             if not (max - min) == 0:
                 array_use[:, i] /= (max - min)
-
-            bar.next()
-        bar.finish()
         
     shape = array_use.shape
     z_dim = math.floor(np.max(shape)/length)
@@ -96,8 +91,7 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
     unique_patients = array['project_id'].unique()
     slicesPerPatient = np.zeros(len(unique_patients))
     
-    bar = Bar('Getting useable slices', max=len(unique_patients))
-    for location, pt in enumerate(unique_patients):
+    for location, pt in enumerate(tqdm(unique_patients, desc = 'Getting usable slices')):
         
         #Get the positions for each patient
         pt_locs = np.where(array.project_id == pt)[0]
@@ -109,8 +103,6 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
         
         #Slot in the locations of the patients
         to_use = np.concatenate([to_use, pt_locs[[i*180 for i in range(int(pt_slices))]]])
-        bar.next()
-    bar.finish()
 
     x_dim = length
     y_dim = np.min(shape)
@@ -128,10 +120,11 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
     outcomes = np.zeros((len(to_use), 14))
     pt_slices = list()
 
-    bar = Bar('Slicing and outcomes', max=len(to_use))
-    for position, i in enumerate(to_use):
-        start_position = i*length
-        end_position = (i + 1)*length
+    #bar = Bar('Slicing and outcomes', max=len(to_use))
+    for position, i in enumerate(tqdm(to_use, desc = 'Getting outcomes', colour = 'green')):
+        start_position = i
+        end_position = i + length
+        end_position_pd = i + length -1
         temp_array = array_use[start_position:end_position, i_series_cols]
         array_3d[position, :, :] = temp_array.transpose()
         array_2d[position, :] = array_use[end_position - 1, i_point_cols]
@@ -171,20 +164,20 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
             outcomes[position, 7] = 1
 
         #Now do something with deterioration as triplicate - get all pSOFA after end of this slice
-        pt_locs = np.where(array['project_id'] == project_id)
+        pt_locs = np.where(array['project_id'] == project_id)[0]
 
         #Get all slots from end of slice to end of patient
-        next_slices = np.setdiff1d(pt_locs[0], range(start_position, end_position)) #Runs much faster - should speed everything up
+        next_slices = pt_locs[pt_locs >=  end_position]
         all_pSOFA_cardio = array.loc[next_slices, 'pSOFA_cardio'] #These should probably be named next_pSOFA/next_lactate etc
         all_lactate = array.loc[next_slices, 'Lactate']
         all_ECMO = array.loc[next_slices, 'ECMO']
         all_pSOFA = array.loc[next_slices, 'pSOFA']
         
         #Get maximum pSOFA from current slice
-        max_pSOFA_cardio = np.max(array.loc[start_position:end_position, 'pSOFA_cardio'])
-        max_pSOFA = np.max(array.loc[start_position:end_position, 'pSOFA'])
-        max_lactate = np.max(array.loc[start_position:end_position, 'Lactate'])
-        max_ECMO = np.max(array.loc[start_position:end_position, 'ECMO'])
+        max_pSOFA_cardio = np.max(array.loc[start_position:end_position_pd, 'pSOFA_cardio'])
+        max_pSOFA = np.max(array.loc[start_position:end_position_pd, 'pSOFA'])
+        max_lactate = np.max(array.loc[start_position:end_position_pd, 'Lactate'])
+        max_ECMO = np.max(array.loc[start_position:end_position_pd, 'ECMO'])
         
 
         #Get all deterioration - now including ECMO
@@ -228,7 +221,9 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
             time_to_worse_pSOFA = hours_to_worse_pSOFA
             
         #Deterioration in hours
+        assert time_to_deteriorate >= 0, 'Only interested in future deterioration'
         outcomes[position, 12] = time_to_deteriorate
+        assert time_to_worse_pSOFA >= 0, 'Only interested in future deterioration (pSOFA)'
         outcomes[position, 13] = time_to_worse_pSOFA
             
         #Currently setting cutoffs to <6h, 6-24h, >24h
@@ -265,9 +260,6 @@ def make_3d_array(array, length, all_cols, point_cols, series_cols, percentile =
             p_values[position, j] = p_value
             std_errs[position, j] = std_err
 
-        bar.next()
-        
-    bar.finish()
     
     na_loc = np.isnan(array_3d)
     array_3d[na_loc] = 0
